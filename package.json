@@ -1,0 +1,31 @@
+{
+  "name": "my-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "web": "tsc && node .build/src/web.js",
+    "knowledge:server": "tsc && node .build/src/chroma-server.js",
+    "knowledge:index": "tsc && node .build/src/knowledge-cli.js index",
+    "knowledge:query": "tsc && node .build/src/knowledge-cli.js query",
+    "test:knowledge": "tsc && node .build/tests/knowledge.test.js",
+    "test:tools": "tsc && node .build/tests/tools.test.js",
+    "test:session": "tsc && node .build/tests/session.test.js",
+    "test:usage": "tsc && node .build/tests/token-usage.test.js",
+    "test:context": "tsc && node .build/tests/context.test.js",
+    "test:config": "tsc && node .build/tests/config.test.js",
+    "test:web-search": "tsc && node .build/tests/web-search.test.js",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.0",
+    "chromadb": "^3.5.0",
+    "openai": "^6.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

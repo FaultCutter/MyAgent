@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>myAgent</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: Inter, system-ui, "Microsoft YaHei", sans-serif;
+        background: Canvas;
+        color: CanvasText;
+        --line: color-mix(in srgb, CanvasText 16%, transparent);
+        --muted: color-mix(in srgb, CanvasText 66%, transparent);
+        --panel: color-mix(in srgb, CanvasText 6%, Canvas);
+        --danger: #c62828;
+        --warning: #d89400;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        background: Canvas;
+      }
+
+      main {
+        width: min(920px, 100%);
+        height: 100dvh;
+        margin: 0 auto;
+        padding: 0 20px;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--line);
+        background: Canvas;
+        z-index: 2;
+      }
+
+      .brand {
+        min-width: 140px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+      }
+
+      #context-stats,
+      #token-stats {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      #token-stats {
+        white-space: normal;
+      }
+
+      #session-controls,
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      button,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      select,
+      button,
+      textarea {
+        border: 1px solid color-mix(in srgb, CanvasText 24%, transparent);
+        border-radius: 9px;
+        background: Canvas;
+        color: CanvasText;
+      }
+
+      select {
+        max-width: min(390px, 46vw);
+        padding: 8px 10px;
+      }
+
+      button {
+        padding: 8px 13px;
+        cursor: pointer;
+      }
+
+      button:hover:not(:disabled) {
+        background: var(--panel);
+      }
+
+      button:disabled,
+      select:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      #delete-session {
+        color: var(--danger);
+      }
+
+      #messages {
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding: 24px 4px;
+        scrollbar-gutter: stable;
+      }
+
+      .message {
+        max-width: 84%;
+        padding: 12px 15px;
+        border-radius: 14px;
+        overflow-wrap: anywhere;
+        line-height: 1.62;
+      }
+
+      .message.user {
+        align-self: flex-end;
+        white-space: pre-wrap;
+        background: AccentColor;
+        color: AccentColorText;
+      }
+
+      .message.assistant,
+      .message.error {
+        align-self: flex-start;
+        background: var(--panel);
+      }
+
+      .message.error {
+        border: 1px solid color-mix(in srgb, var(--danger) 55%, transparent);
+        background: color-mix(in srgb, var(--danger) 9%, Canvas);
+        color: color-mix(in srgb, var(--danger) 84%, CanvasText);
+      }
+
+      .message > :first-child {
+        margin-top: 0;
+      }
+
+      .message > :last-child {
+        margin-bottom: 0;
+      }
+
+      .message h1,
+      .message h2,
+      .message h3 {
+        margin: 0.8em 0 0.35em;
+        line-height: 1.3;
+      }
+
+      .message h1 {
+        font-size: 1.35em;
+      }
+
+      .message h2 {
+        font-size: 1.2em;
+      }
+
+      .message h3 {
+        font-size: 1.08em;
+      }
+
+      .message p,
+      .message ul,
+      .message ol {
+        margin: 0.55em 0;
+      }
+
+      .message ul,
+      .message ol {
+        padding-left: 1.5em;
+      }
+
+      code {
+        padding: 0.12em 0.36em;
+        border-radius: 5px;
+        background: color-mix(in srgb, CanvasText 10%, transparent);
+        font-family: "Cascadia Code", Consolas, monospace;
+        font-size: 0.9em;
+      }
+
+      pre {
+        overflow-x: auto;
+        margin: 0.7em 0;
+        padding: 12px;
+        border-radius: 9px;
+        background: color-mix(in srgb, CanvasText 11%, Canvas);
+        white-space: pre;
+      }
+
+      pre code {
+        padding: 0;
+        background: transparent;
+      }
+
+      details.tool-details {
+        margin-top: 12px;
+        padding-top: 9px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      details summary {
+        cursor: pointer;
+      }
+
+      .tool-list {
+        display: grid;
+        gap: 7px;
+        margin: 9px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .tool-step {
+        padding: 7px 9px;
+        border-left: 3px solid AccentColor;
+        border-radius: 5px;
+        background: color-mix(in srgb, AccentColor 7%, transparent);
+      }
+
+      .tool-step pre {
+        margin: 5px 0 0;
+        padding: 7px;
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+
+      .empty-state {
+        margin: auto;
+        padding: 28px;
+        text-align: center;
+        color: var(--muted);
+      }
+
+      .empty-state strong {
+        display: block;
+        margin-bottom: 7px;
+        color: CanvasText;
+        font-size: 18px;
+      }
+
+      #composer {
+        padding: 10px 0 14px;
+        border-top: 1px solid var(--line);
+        background: Canvas;
+        z-index: 2;
+      }
+
+      #approval,
+      #run-panel {
+        display: none;
+        margin-bottom: 9px;
+        padding: 11px 13px;
+        border-radius: 10px;
+      }
+
+      #approval {
+        border: 1px solid var(--warning);
+        background: color-mix(in srgb, var(--warning) 11%, Canvas);
+      }
+
+      #approval pre {
+        margin: 8px 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      #approval-reason {
+        margin: 7px 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      #run-panel {
+        max-height: 145px;
+        overflow-y: auto;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        font-size: 13px;
+      }
+
+      #run-panel.visible,
+      #approval.visible {
+        display: block;
+      }
+
+      #run-message {
+        font-weight: 650;
+      }
+
+      #live-events {
+        margin-top: 7px;
+      }
+
+      form {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 9px;
+        align-items: end;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 44px;
+        max-height: 180px;
+        resize: none;
+        overflow-y: auto;
+        padding: 10px 12px;
+        line-height: 1.45;
+      }
+
+      textarea:focus,
+      select:focus,
+      button:focus-visible {
+        outline: 2px solid AccentColor;
+        outline-offset: 2px;
+      }
+
+      #send {
+        min-height: 44px;
+        background: AccentColor;
+        color: AccentColorText;
+      }
+
+      #composer-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .composer-options,
+      .network-option {
+        display: flex;
+        align-items: center;
+      }
+
+      .composer-options {
+        flex-wrap: wrap;
+        gap: 6px 14px;
+      }
+
+      .network-option {
+        gap: 5px;
+        color: CanvasText;
+        cursor: pointer;
+      }
+
+      .network-option input {
+        accent-color: AccentColor;
+      }
+
+      #status.error-text {
+        color: var(--danger);
+      }
+
+      @media (max-width: 700px) {
+        main {
+          padding: 0 12px;
+        }
+
+        header {
+          align-items: stretch;
+          flex-direction: column;
+          gap: 9px;
+        }
+
+        #session-controls {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto auto;
+        }
+
+        select {
+          max-width: none;
+          min-width: 0;
+        }
+
+        .message {
+          max-width: 94%;
+        }
+      }
+
+      @media (max-width: 480px) {
+        #session-controls {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        #session-select {
+          grid-column: 1 / -1;
+        }
+
+        form {
+          grid-template-columns: 1fr;
+        }
+
+        #send {
+          width: 100%;
+        }
+
+        #composer-meta {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 2px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="brand">
+          <h1>myAgent</h1>
+          <div id="context-stats">会话：0 条消息 · 上下文：0 项 · 0 B</div>
+          <div id="token-stats">本轮 Token：尚无数据</div>
+        </div>
+        <div id="session-controls">
+          <select id="session-select" aria-label="切换会话"></select>
+          <button id="new-session" type="button">新会话</button>
+          <button id="delete-session" type="button">删除</button>
+        </div>
+      </header>
+
+      <section id="messages" aria-live="polite"></section>
+
+      <section id="composer">
+        <div id="approval" role="alert">
+          <strong>Agent 请求执行命令</strong>
+          <pre id="approval-command"></pre>
+          <p id="approval-reason"></p>
+          <div class="actions">
+            <button id="approve" type="button">允许</button>
+            <button id="deny" type="button">拒绝</button>
+          </div>
+        </div>
+
+        <div id="run-panel" aria-live="polite">
+          <div id="run-message">就绪</div>
+          <ol id="live-events" class="tool-list"></ol>
+        </div>
+
+        <form id="chat-form">
+          <textarea
+            id="message"
+            rows="1"
+            aria-label="消息"
+            placeholder="输入任务或问题……"
+            required
+          ></textarea>
+          <button id="send" type="submit">发送</button>
+        </form>
+        <div id="composer-meta">
+          <div class="composer-options">
+            <label
+              class="network-option"
+              title="开启后，本轮 Agent 才能调用免费的 Bing RSS 联网搜索"
+            >
+              <input id="web-search-enabled" type="checkbox" />
+              允许联网搜索
+            </label>
+            <span>Enter 发送 · Shift + Enter 换行</span>
+          </div>
+          <span id="status" aria-live="polite">就绪</span>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const messages = document.getElementById("messages");
+      const form = document.getElementById("chat-form");
+      const input = document.getElementById("message");
+      const sendButton = document.getElementById("send");
+      const newSessionButton = document.getElementById("new-session");
+      const deleteSessionButton = document.getElementById("delete-session");
+      const sessionSelect = document.getElementById("session-select");
+      const status = document.getElementById("status");
+      const webSearchEnabled = document.getElementById("web-search-enabled");
+      const contextStats = document.getElementById("context-stats");
+      const tokenStats = document.getElementById("token-stats");
+      const approval = document.getElementById("approval");
+      const approvalCommand = document.getElementById("approval-command");
+      const approvalReason = document.getElementById("approval-reason");
+      const runPanel = document.getElementById("run-panel");
+      const runMessage = document.getElementById("run-message");
+      const liveEvents = document.getElementById("live-events");
+      let currentApprovalId = null;
+      let busy = false;
+      let statusFailures = 0;
+      let webSearchDefaultLoaded = false;
+
+      // 使用 DOM 节点渲染加粗和行内代码，避免注入 HTML。
+      function appendInlineMarkdown(parent, text) {
+        const pattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*)/g;
+        let lastIndex = 0;
+
+        for (const match of text.matchAll(pattern)) {
+          const index = match.index ?? 0;
+          parent.append(document.createTextNode(text.slice(lastIndex, index)));
+          const token = match[0];
+          const element = document.createElement(token.startsWith("`") ? "code" : "strong");
+          element.textContent = token.slice(token.startsWith("`") ? 1 : 2, token.startsWith("`") ? -1 : -2);
+          parent.append(element);
+          lastIndex = index + token.length;
+        }
+
+        parent.append(document.createTextNode(text.slice(lastIndex)));
+      }
+
+      // 判断一行是否会开始新的 Markdown 块。
+      function startsMarkdownBlock(line) {
+        return /^```/.test(line) || /^(#{1,3})\s+/.test(line) || /^\s*[-*]\s+/.test(line) || /^\s*\d+\.\s+/.test(line);
+      }
+
+      // 把有限的 Markdown 转换为安全 DOM，不使用 innerHTML。
+      function renderMarkdown(text) {
+        const fragment = document.createDocumentFragment();
+        const lines = text.replace(/\r\n/g, "\n").split("\n");
+
+        for (let index = 0; index < lines.length;) {
+          const line = lines[index];
+
+          if (!line.trim()) {
+            index += 1;
+            continue;
+          }
+
+          if (line.startsWith("```")) {
+            const language = line.slice(3).trim();
+            const codeLines = [];
+            index += 1;
+            while (index < lines.length && !lines[index].startsWith("```")) {
+              codeLines.push(lines[index]);
+              index += 1;
+            }
+            if (index < lines.length) index += 1;
+            const pre = document.createElement("pre");
+            const code = document.createElement("code");
+            if (language) code.dataset.language = language;
+            code.textContent = codeLines.join("\n");
+            pre.append(code);
+            fragment.append(pre);
+            continue;
+          }
+
+          const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+          if (headingMatch) {
+            const heading = document.createElement(`h${headingMatch[1].length}`);
+            appendInlineMarkdown(heading, headingMatch[2]);
+            fragment.append(heading);
+            index += 1;
+            continue;
+          }
+
+          const unordered = /^\s*[-*]\s+/.test(line);
+          const ordered = /^\s*\d+\.\s+/.test(line);
+          if (unordered || ordered) {
+            const list = document.createElement(ordered ? "ol" : "ul");
+            const itemPattern = ordered ? /^\s*\d+\.\s+(.+)$/ : /^\s*[-*]\s+(.+)$/;
+            while (index < lines.length) {
+              const match = lines[index].match(itemPattern);
+              if (!match) break;
+              const item = document.createElement("li");
+              appendInlineMarkdown(item, match[1]);
+              list.append(item);
+              index += 1;
+            }
+            fragment.append(list);
+            continue;
+          }
+
+          const paragraphLines = [line];
+          index += 1;
+          while (index < lines.length && lines[index].trim() && !startsMarkdownBlock(lines[index])) {
+            paragraphLines.push(lines[index]);
+            index += 1;
+          }
+          const paragraph = document.createElement("p");
+          appendInlineMarkdown(paragraph, paragraphLines.join("\n"));
+          fragment.append(paragraph);
+        }
+
+        return fragment;
+      }
+
+      // 从日志文本中提取工具步骤、名称和参数。
+      function parseToolEvent(eventText, fallbackStep) {
+        const match = eventText.match(/^\[(\d+)\/(\d+)\]\s+([^\s(]+)\((.*)\)$/s);
+        return match
+          ? { step: `${match[1]}/${match[2]}`, name: match[3], arguments: match[4] }
+          : { step: String(fallbackStep), name: "工具事件", arguments: eventText };
+      }
+
+      // 把工具调用事件显示为逐步列表。
+      function createToolList(events) {
+        const list = document.createElement("ol");
+        list.className = "tool-list";
+
+        events.forEach((eventText, index) => {
+          const event = parseToolEvent(eventText, index + 1);
+          const item = document.createElement("li");
+          item.className = "tool-step";
+          const title = document.createElement("strong");
+          title.textContent = `步骤 ${event.step} · ${event.name}`;
+          const argumentsBlock = document.createElement("pre");
+          argumentsBlock.textContent = event.arguments;
+          item.append(title, argumentsBlock);
+          list.append(item);
+        });
+
+        return list;
+      }
+
+      // 创建一块可展开的最终工具调用记录。
+      function createToolDetails(events) {
+        const details = document.createElement("details");
+        details.className = "tool-details";
+        const summary = document.createElement("summary");
+        summary.textContent = `工具调用 ${events.length} 次`;
+        details.append(summary, createToolList(events));
+        return details;
+      }
+
+      // 将消息区滚动到最新内容。
+      function scrollMessagesToBottom(smooth = true) {
+        messages.scrollTo({ top: messages.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+      }
+
+      // 在空会话中显示简单的使用提示。
+      function showEmptyState() {
+        const empty = document.createElement("div");
+        empty.className = "empty-state";
+        const title = document.createElement("strong");
+        title.textContent = "从一个具体任务开始";
+        const hint = document.createElement("span");
+        hint.textContent = "例如：读取 README，并告诉我这个项目现在支持哪些工具。";
+        empty.append(title, hint);
+        messages.append(empty);
+      }
+
+      // 向聊天区域添加一条用户、助手或错误消息。
+      function addMessage(role, text, events = []) {
+        messages.querySelector(".empty-state")?.remove();
+        const article = document.createElement("article");
+        article.className = `message ${role}`;
+
+        if (role === "assistant") {
+          article.append(renderMarkdown(text));
+        } else {
+          article.textContent = text;
+        }
+
+        if (events.length > 0) article.append(createToolDetails(events));
+        messages.append(article);
+        scrollMessagesToBottom();
+      }
+
+      // 把字节数格式化为便于阅读的体积。
+      function formatBytes(byteCount) {
+        if (byteCount < 1024) return `${byteCount} B`;
+        if (byteCount < 1024 * 1024) return `${(byteCount / 1024).toFixed(1)} KB`;
+        return `${(byteCount / (1024 * 1024)).toFixed(1)} MB`;
+      }
+
+      // 更新标题栏中的会话和上下文统计。
+      function updateContextStats(context) {
+        if (!context) return;
+        contextStats.textContent = `会话：${context.messageCount} 条消息 · 上下文：${context.itemCount} 项 · ${formatBytes(context.byteCount)}`;
+      }
+
+      // 更新本轮模型调用实际返回的 Token 用量。
+      function updateTokenStats(usage) {
+        if (!usage || usage.modelCalls === 0) {
+          tokenStats.textContent = "本轮 Token：尚无数据";
+          tokenStats.removeAttribute("title");
+          return;
+        }
+
+        if (usage.reportedCalls === 0) {
+          tokenStats.textContent = `本轮 Token：API 未返回 usage · ${usage.modelCalls} 次调用`;
+          tokenStats.removeAttribute("title");
+          return;
+        }
+
+        const coverage =
+          usage.reportedCalls === usage.modelCalls
+            ? `${usage.modelCalls} 次调用`
+            : `usage ${usage.reportedCalls}/${usage.modelCalls} 次可用`;
+        tokenStats.textContent = `本轮 Token：输入 ${usage.inputTokens.toLocaleString()} · 输出 ${usage.outputTokens.toLocaleString()} · 总计 ${usage.totalTokens.toLocaleString()} · ${coverage}`;
+        tokenStats.title = `缓存输入 ${usage.cachedInputTokens.toLocaleString()} · 推理 Token ${usage.reasoningTokens.toLocaleString()}`;
+      }
+
+      // 更新底部状态文字并区分普通状态和错误。
+      function setStatus(text, isError = false) {
+        status.textContent = text;
+        status.classList.toggle("error-text", isError);
+      }
+
+      // 根据输入内容自动调整输入框高度。
+      function resizeInput() {
+        input.style.height = "auto";
+        input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
+      }
+
+      // 切换运行状态；保持输入框可编辑，但防止重复提交和切换会话。
+      function setBusy(value) {
+        busy = value;
+        sendButton.disabled = value;
+        newSessionButton.disabled = value;
+        deleteSessionButton.disabled = value;
+        sessionSelect.disabled = value;
+        sendButton.textContent = value ? "处理中" : "发送";
+      }
+
+      // 读取 JSON 响应，并把非成功状态转换为异常。
+      async function readResponse(response, fallbackMessage) {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error ?? fallbackMessage);
+        return data;
+      }
+
+      // 加载会话列表并选中服务器当前使用的会话。
+      async function loadSessions() {
+        const response = await fetch("/api/sessions");
+        const data = await readResponse(response, "无法加载会话列表");
+        sessionSelect.replaceChildren();
+
+        data.sessions.forEach((item) => {
+          const option = document.createElement("option");
+          option.value = item.id;
+          option.textContent = `${item.title} · ${new Date(item.updatedAt).toLocaleString()}`;
+          option.selected = item.id === data.currentSessionId;
+          sessionSelect.append(option);
+        });
+      }
+
+      // 从服务器加载已经保存的可见聊天消息。
+      async function loadMessages() {
+        const response = await fetch("/api/messages");
+        const data = await readResponse(response, "无法加载会话内容");
+        messages.replaceChildren();
+        data.messages.forEach((item) => addMessage(item.role, item.text));
+        if (data.messages.length === 0) showEmptyState();
+        scrollMessagesToBottom(false);
+      }
+
+      // 把本轮实时工具事件更新到运行面板中。
+      function renderLiveEvents(events) {
+        const signature = JSON.stringify(events);
+        if (liveEvents.dataset.events === signature) return;
+        liveEvents.dataset.events = signature;
+        const list = createToolList(events);
+        liveEvents.replaceChildren(...list.childNodes);
+      }
+
+      // 根据状态接口显示或隐藏命令审批框。
+      function updateApproval(nextApproval) {
+        if (!nextApproval) {
+          currentApprovalId = null;
+          approval.classList.remove("visible");
+          return;
+        }
+
+        currentApprovalId = nextApproval.id;
+        approvalCommand.textContent = nextApproval.command;
+        approvalReason.textContent = `原因：${nextApproval.reason}`;
+        approval.classList.add("visible");
+      }
+
+      // 轮询 Agent 运行阶段、工具事件、审批请求和上下文统计。
+      async function pollStatus() {
+        let nextDelay = 1500;
+
+        try {
+          const response = await fetch("/api/status");
+          const data = await readResponse(response, "无法读取运行状态");
+          statusFailures = 0;
+          setBusy(Boolean(data.running));
+          setStatus(data.message || (data.running ? "Agent 正在处理…" : "就绪"));
+          runMessage.textContent = data.message || "Agent 正在处理…";
+          renderLiveEvents(data.events ?? []);
+          runPanel.classList.toggle("visible", Boolean(data.running || data.events?.length));
+          updateApproval(data.approval);
+          updateContextStats(data.context);
+          updateTokenStats(data.usage);
+          if (!webSearchDefaultLoaded) {
+            webSearchEnabled.checked = Boolean(data.webSearchEnabled);
+            webSearchDefaultLoaded = true;
+          }
+          nextDelay = data.running ? 500 : 1500;
+        } catch (error) {
+          statusFailures += 1;
+          if (statusFailures >= 2) {
+            setStatus(`状态更新失败：${error.message}`, true);
+            runMessage.textContent = "无法获取 Agent 运行状态";
+            runPanel.classList.add("visible");
+          }
+          nextDelay = 2000;
+        } finally {
+          window.setTimeout(pollStatus, nextDelay);
+        }
+      }
+
+      // 把用户的命令审批结果发送回正在等待的 Agent Loop。
+      async function answerApproval(approved) {
+        if (currentApprovalId === null) return;
+        const response = await fetch("/api/approval", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: currentApprovalId, approved })
+        });
+        await readResponse(response, "提交审批结果失败");
+        currentApprovalId = null;
+        approval.classList.remove("visible");
+      }
+
+      // 发送一条用户消息，失败时把原消息恢复到输入框。
+      async function sendMessage(text) {
+        addMessage("user", text);
+        setBusy(true);
+        setStatus("正在思考…");
+
+        try {
+          const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              message: text,
+              webSearchEnabled: webSearchEnabled.checked
+            })
+          });
+          const data = await readResponse(response, "请求失败");
+          addMessage("assistant", data.answer, data.events);
+          await Promise.all([loadSessions(), pollStatusOnce()]).catch((error) => {
+            setStatus(`回答已收到，但界面状态刷新失败：${error.message}`, true);
+          });
+        } catch (error) {
+          const nextDraft = input.value.trim();
+          input.value = nextDraft ? `${text}\n\n${input.value}` : text;
+          resizeInput();
+          addMessage("error", `发送失败：${error.message}`);
+          setStatus("发送失败，原消息已恢复", true);
+        } finally {
+          setBusy(false);
+          input.focus();
+        }
+      }
+
+      // 立即读取一次运行状态，供请求完成后刷新统计。
+      async function pollStatusOnce() {
+        const response = await fetch("/api/status");
+        const data = await readResponse(response, "无法刷新运行状态");
+        updateContextStats(data.context);
+        updateTokenStats(data.usage);
+        if (!webSearchDefaultLoaded) {
+          webSearchEnabled.checked = Boolean(data.webSearchEnabled);
+          webSearchDefaultLoaded = true;
+        }
+        runMessage.textContent = data.message;
+        renderLiveEvents(data.events ?? []);
+        runPanel.classList.toggle("visible", Boolean(data.running || data.events?.length));
+        setStatus(data.message || "就绪");
+      }
+
+      // 确认后创建新会话，原会话仍保留在列表中。
+      async function startNewSession() {
+        if (busy || !window.confirm("创建新会话吗？当前会话会保留在会话列表中。")) return;
+        const response = await fetch("/api/new", { method: "POST" });
+        await readResponse(response, "无法创建会话");
+        await Promise.all([loadSessions(), loadMessages(), pollStatusOnce()]);
+        input.focus();
+      }
+
+      // 切换到已有会话并重新加载消息和上下文统计。
+      async function switchSession(sessionId) {
+        if (busy) return;
+        const response = await fetch("/api/session", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionId })
+        });
+        await readResponse(response, "无法切换会话");
+        await Promise.all([loadSessions(), loadMessages(), pollStatusOnce()]);
+        input.focus();
+      }
+
+      // 删除当前会话，并加载服务端选定的后继会话。
+      async function deleteCurrentSession() {
+        if (busy || !sessionSelect.value) return;
+        const sessionId = sessionSelect.value;
+        const title = sessionSelect.selectedOptions[0]?.textContent ?? sessionId;
+        if (!window.confirm(`确定删除会话“${title}”吗？此操作无法撤销。`)) return;
+
+        const response = await fetch("/api/session/delete", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionId })
+        });
+        await readResponse(response, "无法删除会话");
+        await Promise.all([loadSessions(), loadMessages(), pollStatusOnce()]);
+        input.focus();
+      }
+
+      // 在界面中展示按钮或会话操作产生的错误。
+      function reportUiError(error) {
+        addMessage("error", `界面错误：${error.message}`);
+        setStatus(error.message, true);
+      }
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const text = input.value.trim();
+        if (!text || busy) return;
+        input.value = "";
+        resizeInput();
+        sendMessage(text);
+      });
+
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey && !event.isComposing && !busy) {
+          event.preventDefault();
+          form.requestSubmit();
+        }
+      });
+      input.addEventListener("input", resizeInput);
+      document.getElementById("approve").addEventListener("click", () => {
+        answerApproval(true).catch(reportUiError);
+      });
+      document.getElementById("deny").addEventListener("click", () => {
+        answerApproval(false).catch(reportUiError);
+      });
+      newSessionButton.addEventListener("click", () => {
+        startNewSession().catch(reportUiError);
+      });
+      deleteSessionButton.addEventListener("click", () => {
+        deleteCurrentSession().catch(reportUiError);
+      });
+      sessionSelect.addEventListener("change", () => {
+        switchSession(sessionSelect.value).catch(reportUiError);
+      });
+
+      Promise.all([loadSessions(), loadMessages(), pollStatusOnce()])
+        .catch(reportUiError)
+        .finally(() => input.focus());
+      resizeInput();
+      pollStatus();
+    </script>
+  </body>
+</html>
