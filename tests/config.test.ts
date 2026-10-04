@@ -8,7 +8,8 @@ import { promisify } from "node:util";
 import {
   CONFIG_DEFAULTS,
   createConfig,
-  requireDeepSeekApiKey
+  requireDeepSeekApiKey,
+  requireJevApiKey
 } from "../src/config.js";
 
 const execFileAsync = promisify(execFile);
@@ -19,6 +20,11 @@ assert.deepEqual(defaults.deepseek, {
   model: "deepseek-flash",
   baseUrl: "https://api.deepseek.com",
   reasoningEffort: "high"
+});
+assert.deepEqual(defaults.jev, {
+  enabled: false,
+  model: "jev-1.13",
+  baseUrl: "https://api.tu-zi.com"
 });
 assert.deepEqual(defaults.agent, {
   maxSteps: 12,
@@ -35,6 +41,11 @@ assert.deepEqual(defaults.chroma, {
   dataPath: path.resolve(".myagent/chroma"),
   collection: "myagent_knowledge"
 });
+assert.deepEqual(defaults.paper, {
+  dataPath: path.resolve(".myagent/papers"),
+  collection: "myagent_papers",
+  maxPdfBytes: 50_000_000
+});
 assert.equal(defaults.knowledgePath, path.resolve("knowledge"));
 
 const overridden = createConfig({
@@ -42,6 +53,10 @@ const overridden = createConfig({
   DEEPSEEK_MODEL: "custom-model",
   DEEPSEEK_BASE_URL: "https://example.test/v1",
   DEEPSEEK_REASONING_EFFORT: "max",
+  JEV_ENABLED: "true",
+  JEV_API_KEY: " jev-test-key ",
+  JEV_MODEL: "jev-custom",
+  JEV_BASE_URL: "https://example.test",
   AGENT_MAX_STEPS: "7",
   AGENT_CONTEXT_MAX_CHARS: "20000",
   AGENT_OLD_TOOL_OUTPUT_MAX_CHARS: "900",
@@ -53,6 +68,9 @@ const overridden = createConfig({
   CHROMA_MODEL_PATH: "fixtures/model",
   CHROMA_DATA_PATH: "fixtures/chroma",
   CHROMA_COLLECTION: "papers",
+  PAPER_DATA_PATH: "fixtures/papers",
+  PAPER_COLLECTION: "paper_chunks",
+  PAPER_MAX_PDF_BYTES: "123456",
   KNOWLEDGE_PATH: "fixtures/knowledge"
 });
 
@@ -60,6 +78,12 @@ assert.equal(overridden.deepseek.apiKey, "overridden-key");
 assert.equal(overridden.deepseek.model, "custom-model");
 assert.equal(overridden.deepseek.baseUrl, "https://example.test/v1");
 assert.equal(overridden.deepseek.reasoningEffort, "max");
+assert.deepEqual(overridden.jev, {
+  enabled: true,
+  apiKey: "jev-test-key",
+  model: "jev-custom",
+  baseUrl: "https://example.test"
+});
 assert.deepEqual(overridden.agent, {
   maxSteps: 7,
   contextMaxCharacters: 20_000,
@@ -74,6 +98,11 @@ assert.deepEqual(overridden.chroma, {
   modelPath: path.resolve("fixtures/model"),
   dataPath: path.resolve("fixtures/chroma"),
   collection: "papers"
+});
+assert.deepEqual(overridden.paper, {
+  dataPath: path.resolve("fixtures/papers"),
+  collection: "paper_chunks",
+  maxPdfBytes: 123_456
 });
 assert.equal(overridden.knowledgePath, path.resolve("fixtures/knowledge"));
 
@@ -100,6 +129,18 @@ assert.throws(
 assert.throws(
   () => createConfig({ AGENT_WEB_SEARCH_ENABLED: "yes" }),
   /AGENT_WEB_SEARCH_ENABLED must be true or false/
+);
+assert.throws(
+  () => createConfig({ JEV_ENABLED: "yes" }),
+  /JEV_ENABLED must be true or false/
+);
+assert.throws(
+  () => requireJevApiKey(createConfig({ JEV_ENABLED: "true" })),
+  /JEV_API_KEY is required/
+);
+assert.throws(
+  () => createConfig({ PAPER_MAX_PDF_BYTES: "0" }),
+  /PAPER_MAX_PDF_BYTES must be a positive integer/
 );
 assert.throws(
   () => requireDeepSeekApiKey(createConfig({})),

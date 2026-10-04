@@ -7,8 +7,11 @@ import { requireDeepSeekApiKey } from "./config.js";
 import type { ContextBuildStats } from "./context.js";
 import { SessionStore } from "./session.js";
 import type { TokenUsageSnapshot } from "./token-usage.js";
+import { FileTraceStore } from "./trace.js";
+import { formatJevCommandReview } from "./jev.js";
 
 const task = process.argv.slice(2).join(" ").trim();
+const traceStore = new FileTraceStore();
 const colorEnabled = output.isTTY && process.env.NO_COLOR === undefined;
 const ANSI = {
   reset: "\u001B[0m",
@@ -108,10 +111,12 @@ function withCommandApproval(
   return {
     ...options,
     // 展示命令及原因，并且只在用户明确输入 y 时批准。
-    approveCommand: async (command, reason) => {
+    approveCommand: async (command, reason, review) => {
       console.log(
         colorText(`\nAgent 请求执行命令：\n${command}\n\n原因：${reason}`, "warning")
       );
+      const reviewText = formatJevCommandReview(review);
+      if (reviewText) console.log(colorText(`\n${reviewText}`, "system"));
       const answer = (
         await questionWithColor(terminal, "是否允许？(y/N): ", "warning")
       )
@@ -175,6 +180,8 @@ async function runOneShot(userTask: string, options: AgentOptions): Promise<void
   const history = currentSession.history;
   const reporter = createCliRunReporter({
     ...withCommandApproval(options, terminal),
+    sessionId: currentSession.id,
+    trace: traceStore,
     onHistoryChange: async (currentHistory) => {
       await session.save(currentSession.id, currentHistory);
     }
@@ -197,6 +204,7 @@ async function runInteractive(options: AgentOptions): Promise<void> {
   let history: ResponseInput = currentSession.history;
   const interactiveOptions: AgentOptions = {
     ...withCommandApproval(options, terminal),
+    trace: traceStore,
     onHistoryChange: async (currentHistory) => {
       await session.save(currentSession.id, currentHistory);
     }
@@ -275,7 +283,10 @@ async function runInteractive(options: AgentOptions): Promise<void> {
       }
 
       try {
-        const reporter = createCliRunReporter(interactiveOptions);
+        const reporter = createCliRunReporter({
+          ...interactiveOptions,
+          sessionId: currentSession.id
+        });
         try {
           const result = await runAgent(userTask, reporter.options, history);
           console.log(colorText(`Agent> ${result}`, "agent"));

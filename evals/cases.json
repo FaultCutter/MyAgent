@@ -1,0 +1,77 @@
+[
+  {
+    "id": "web-start-command",
+    "name": "从项目文件定位 Web 启动命令",
+    "prompt": "这个项目如何启动 Web UI？请根据当前项目文件简洁回答。",
+    "webSearchEnabled": false,
+    "expect": {
+      "requiredTools": ["read_file"],
+      "forbiddenTools": [
+        "run_command",
+        "web_search",
+        "fetch_web_page",
+        "knowledge_search",
+        "arxiv_search",
+      "paper_import",
+      "paper_search",
+      "paper_save_guide"
+      ],
+      "maxToolCalls": 2,
+      "maxModelCalls": 3,
+      "maxToolErrors": 0,
+      "requiredAnswerPatterns": ["npm\\s+run\\s+web"]
+    }
+  },
+  {
+    "id": "official-web-research",
+    "name": "用最短路径查询官方网页",
+    "prompt": "查找 DeepSeek 官方 API 文档，说明当前 Chat Completion API 的请求地址，并给出来源链接。",
+    "webSearchEnabled": true,
+    "expect": {
+      "requiredTools": ["web_search", "fetch_web_page"],
+      "forbiddenTools": [
+        "run_command",
+        "list_files",
+        "search_files",
+        "grep_files",
+        "read_file",
+        "knowledge_search",
+        "arxiv_search",
+      "paper_import",
+      "paper_search",
+      "paper_save_guide"
+      ],
+      "maxToolCalls": 4,
+      "maxModelCalls": 5,
+      "maxToolErrors": 0,
+      "requiredAnswerPatterns": ["https?://"]
+    }
+  },
+  {
+    "id": "agent-loop-concept",
+    "name": "常识问题不应调用工具",
+    "prompt": "用两句话解释 Agent Loop 是什么，不要展开。",
+    "webSearchEnabled": false,
+    "expect": {
+      "forbiddenTools": [
+        "run_command",
+        "list_files",
+        "search_files",
+        "grep_files",
+        "read_file",
+        "write_file",
+        "web_search",
+        "fetch_web_page",
+        "knowledge_search",
+        "arxiv_search",
+      "paper_import",
+      "paper_search",
+      "paper_save_guide"
+      ],
+      "maxToolCalls": 0,
+      "maxModelCalls": 1,
+      "maxToolErrors": 0,
+      "requiredAnswerPatterns": ["(循环|loop)"]
+    }
+  }
+]

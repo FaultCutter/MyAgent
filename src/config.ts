@@ -12,6 +12,13 @@ export interface DeepSeekConfig {
   reasoningEffort: ReasoningEffort;
 }
 
+export interface JevConfig {
+  enabled: boolean;
+  apiKey?: string;
+  model: string;
+  baseUrl: string;
+}
+
 export interface AgentRuntimeConfig {
   maxSteps: number;
   contextMaxCharacters: number;
@@ -29,10 +36,18 @@ export interface ChromaConfig {
   collection: string;
 }
 
+export interface PaperConfig {
+  dataPath: string;
+  collection: string;
+  maxPdfBytes: number;
+}
+
 export interface AppConfig {
   deepseek: DeepSeekConfig;
+  jev: JevConfig;
   agent: AgentRuntimeConfig;
   chroma: ChromaConfig;
+  paper: PaperConfig;
   knowledgePath: string;
 }
 
@@ -40,6 +55,9 @@ export const CONFIG_DEFAULTS = {
   deepseekModel: "deepseek-flash",
   deepseekBaseUrl: "https://api.deepseek.com",
   deepseekReasoningEffort: "high" as ReasoningEffort,
+  jevEnabled: false,
+  jevModel: "jev-1.13",
+  jevBaseUrl: "https://api.tu-zi.com",
   agentMaxSteps: 12,
   agentContextMaxCharacters: 30_000,
   agentOldToolOutputMaxCharacters: 1_500,
@@ -58,6 +76,9 @@ export const CONFIG_DEFAULTS = {
   ),
   chromaDataPath: ".myagent/chroma",
   chromaCollection: "myagent_knowledge",
+  paperDataPath: ".myagent/papers",
+  paperCollection: "myagent_papers",
+  paperMaxPdfBytes: 50_000_000,
   knowledgePath: "knowledge"
 } as const;
 
@@ -141,6 +162,12 @@ export function createConfig(environment: NodeJS.ProcessEnv = process.env): AppC
       baseUrl: environment.DEEPSEEK_BASE_URL ?? CONFIG_DEFAULTS.deepseekBaseUrl,
       reasoningEffort: readReasoningEffort(environment)
     },
+    jev: {
+      enabled: readBoolean(environment, "JEV_ENABLED", CONFIG_DEFAULTS.jevEnabled),
+      ...(environment.JEV_API_KEY?.trim() ? { apiKey: environment.JEV_API_KEY.trim() } : {}),
+      model: environment.JEV_MODEL ?? CONFIG_DEFAULTS.jevModel,
+      baseUrl: environment.JEV_BASE_URL ?? CONFIG_DEFAULTS.jevBaseUrl
+    },
     agent: {
       maxSteps: readPositiveInteger(
         environment,
@@ -180,6 +207,15 @@ export function createConfig(environment: NodeJS.ProcessEnv = process.env): AppC
       ),
       collection: environment.CHROMA_COLLECTION ?? CONFIG_DEFAULTS.chromaCollection
     },
+    paper: {
+      dataPath: path.resolve(environment.PAPER_DATA_PATH ?? CONFIG_DEFAULTS.paperDataPath),
+      collection: environment.PAPER_COLLECTION ?? CONFIG_DEFAULTS.paperCollection,
+      maxPdfBytes: readPositiveInteger(
+        environment,
+        "PAPER_MAX_PDF_BYTES",
+        CONFIG_DEFAULTS.paperMaxPdfBytes
+      )
+    },
     knowledgePath: path.resolve(
       environment.KNOWLEDGE_PATH ?? CONFIG_DEFAULTS.knowledgePath
     )
@@ -193,5 +229,12 @@ export const config = createConfig();
 export function requireDeepSeekApiKey(currentConfig: AppConfig = config): string {
   const apiKey = currentConfig.deepseek.apiKey;
   if (!apiKey) throw new Error("DEEPSEEK_API_KEY is required.");
+  return apiKey;
+}
+
+// 在启用命令辅助审查并发起 Jev 请求时检查中转站密钥。
+export function requireJevApiKey(currentConfig: AppConfig = config): string {
+  const apiKey = currentConfig.jev.apiKey;
+  if (!apiKey) throw new Error("JEV_API_KEY is required when JEV_ENABLED=true.");
   return apiKey;
 }

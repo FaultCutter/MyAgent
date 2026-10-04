@@ -6,14 +6,19 @@ import { runAgent } from "./agent.js";
 import type { AgentOptions } from "./agent.js";
 import { config, requireDeepSeekApiKey } from "./config.js";
 import type { ContextBuildStats } from "./context.js";
+import { evaluateTrace, findEvalCase, loadEvalCases } from "./eval.js";
 import { SessionStore } from "./session.js";
 import { emptyTokenUsage } from "./token-usage.js";
 import type { TokenUsageSnapshot } from "./token-usage.js";
+import { FileTraceStore } from "./trace.js";
+import { formatJevCommandReview } from "./jev.js";
+import type { JevCommandReview } from "./jev.js";
 
 interface PendingApproval {
   id: number;
   command: string;
   reason: string;
+  review: string | null;
   resolve: (approved: boolean) => void;
 }
 
@@ -23,6 +28,7 @@ interface VisibleMessage {
 }
 
 interface RunState {
+  runId: string | null;
   message: string;
   events: string[];
   webSearchEnabled: boolean;
@@ -34,6 +40,7 @@ const host = "127.0.0.1";
 requireDeepSeekApiKey();
 const port = config.agent.webPort;
 const session = new SessionStore();
+const traceStore = new FileTraceStore();
 let activeSession = await session.loadCurrent();
 let history: ResponseInput = activeSession.history;
 const pagePath = path.resolve("web", "index.html");
@@ -41,6 +48,7 @@ let pendingApproval: PendingApproval | null = null;
 let nextApprovalId = 1;
 let chatRunning = false;
 let runState: RunState = {
+  runId: null,
   message: "就绪",
   events: [],
   webSearchEnabled: config.agent.webSearchEnabled,
@@ -109,23 +117,29 @@ function contextStats(items: ResponseInput): {
 }
 
 // 将待审批命令转换为可以发送给浏览器的只读数据。
-function visibleApproval(): { id: number; command: string; reason: string } | null {
+function visibleApproval(): { id: number; command: string; reason: string; review: string | null } | null {
   return pendingApproval
     ? {
         id: pendingApproval.id,
         command: pendingApproval.command,
-        reason: pendingApproval.reason
+        reason: pendingApproval.reason,
+        review: pendingApproval.review
       }
     : null;
 }
 
 // 暂停 Agent Loop，直到网页端批准或拒绝命令。
-function requestCommandApproval(command: string, reason: string): Promise<boolean> {
+function requestCommandApproval(
+  command: string,
+  reason: string,
+  review: JevCommandReview | null
+): Promise<boolean> {
   return new Promise((resolve) => {
     pendingApproval = {
       id: nextApprovalId,
       command,
       reason,
+      review: formatJevCommandReview(review),
       resolve
     };
     nextApprovalId += 1;
@@ -137,6 +151,14 @@ function requestCommandApproval(command: string, reason: string): Promise<boolea
 function loadAgentOptions(events: string[], webSearchEnabled: boolean): AgentOptions {
   return {
     webSearchEnabled,
+    sessionId: activeSession.id,
+    trace: {
+      // 持久化结构化事件，并把当前 Run ID 暴露给网页状态。
+      async record(event) {
+        runState.runId = event.runId;
+        await traceStore.record(event);
+      }
+    },
     // 收集工具调用事件并立即暴露给网页状态接口。
     onEvent: (message) => {
       events.push(message);
@@ -194,6 +216,7 @@ async function handleRequest(
   if (request.method === "GET" && url.pathname === "/api/status") {
     sendJson(response, 200, {
       running: chatRunning,
+      runId: runState.runId,
       message: runState.message,
       events: runState.events,
       webSearchEnabled: runState.webSearchEnabled,
@@ -202,6 +225,54 @@ async function handleRequest(
       approval: visibleApproval(),
       context: contextStats(history)
     });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/traces") {
+    const traces = (await traceStore.list()).filter(
+      (trace) => trace.sessionId === activeSession.id
+    );
+    sendJson(response, 200, { traces });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/trace") {
+    const runId = url.searchParams.get("runId");
+    if (!runId) {
+      sendJson(response, 400, { error: "Run ID is required." });
+      return;
+    }
+
+    const events = await traceStore.load(runId);
+    if (events[0]?.sessionId !== activeSession.id) {
+      sendJson(response, 404, { error: "Trace not found in the current session." });
+      return;
+    }
+
+    sendJson(response, 200, { events });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/eval-cases") {
+    sendJson(response, 200, { cases: await loadEvalCases() });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/eval") {
+    const body = (await readJson(request)) as { runId?: string; caseId?: string };
+    if (!body.runId || !body.caseId) {
+      sendJson(response, 400, { error: "Run ID and Eval Case ID are required." });
+      return;
+    }
+
+    const events = await traceStore.load(body.runId);
+    if (events[0]?.sessionId !== activeSession.id) {
+      sendJson(response, 404, { error: "Trace not found in the current session." });
+      return;
+    }
+
+    const evalCase = findEvalCase(await loadEvalCases(), body.caseId);
+    sendJson(response, 200, { result: evaluateTrace(events, evalCase) });
     return;
   }
 
@@ -235,6 +306,7 @@ async function handleRequest(
     activeSession = await session.create();
     history = activeSession.history;
     runState = {
+      runId: null,
       message: "就绪",
       events: [],
       webSearchEnabled: config.agent.webSearchEnabled,
@@ -260,6 +332,7 @@ async function handleRequest(
     activeSession = await session.select(body.sessionId);
     history = activeSession.history;
     runState = {
+      runId: null,
       message: "就绪",
       events: [],
       webSearchEnabled: config.agent.webSearchEnabled,
@@ -286,6 +359,7 @@ async function handleRequest(
     activeSession = await session.delete(deletedSessionId);
     history = activeSession.history;
     runState = {
+      runId: null,
       message: "就绪",
       events: [],
       webSearchEnabled: config.agent.webSearchEnabled,
@@ -324,6 +398,7 @@ async function handleRequest(
     const events: string[] = [];
     chatRunning = true;
     runState = {
+      runId: null,
       message: "正在思考…",
       events,
       webSearchEnabled,
@@ -340,6 +415,7 @@ async function handleRequest(
       runState.message = "回答完成";
       sendJson(response, 200, {
         answer,
+        runId: runState.runId,
         events,
         usage: runState.usage,
         modelContext: runState.modelContext

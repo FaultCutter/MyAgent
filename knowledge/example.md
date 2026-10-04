@@ -10,4 +10,4 @@ myAgent is a learning-oriented TypeScript agent. Its current goal is to make the
 
 ## 本地知识库
 
-放入 `knowledge` 目录的 Markdown 和纯文本文件可以建立 Chroma 向量索引。Agent 通过 `knowledge_search` 检索片段，并在回答中引用文件名和 chunk ID。
+放入 `knowledge` 目录的 Markdown 和纯文本文件，会在首次 `knowledge_search` 或内容变化后的首次检索时自动同步到 Chroma。Agent 检索片段后，在回答中引用文件名和 chunk ID。

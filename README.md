@@ -6,7 +6,7 @@
 用户输入 → 模型 → 工具调用 → 工具结果 → 模型 → 最终回答
 ```
 
-项目已经支持 Agent Loop、多轮会话、本地会话持久化、受预算控制的模型上下文、工具调用、免费公共网页搜索与网页正文读取、本地 Chroma RAG、命令人工审批，以及一个简单的浏览器聊天界面。
+项目已经支持 Agent Loop、多轮会话、本地会话持久化、受预算控制的模型上下文、工具调用、免费公共网页搜索与网页正文读取、本地 Chroma RAG、命令人工审批、结构化 Trace、确定性 Eval，以及一个简单的浏览器聊天界面。
 
 ## 学习原则
 
@@ -21,13 +21,7 @@
 
 当前建设顺序是“先掌握通用 Agent 基础，再组合学术能力”。已经完成的基础包括 Tool Call、Agent Loop、Web Search、网页正文读取、Session、Context Management 和本地 RAG。
 
-接下来的学术能力按小步实现：
-
-1. `read_pdf`：读取本地或已下载论文 PDF，并保留页码来源。
-2. 学术元数据检索：接入免费来源，例如 OpenAlex、Crossref 或 arXiv，而不是只依赖通用网页搜索。
-3. 单篇论文结构化阅读：提取题目、作者、问题、方法、实验、结论和局限。
-4. 论文入库：把论文正文和元数据加入 Literature Corpus，支持可追溯的 RAG。
-5. 多论文比较：围绕同一问题整理证据、分歧、研究空白和引用。
+已加入 arXiv 元数据检索、论文 PDF 下载与逐页解析、独立论文索引、带页码的检索，以及单篇论文 Markdown 导读。下一步再根据真实使用结果考虑本地 PDF 入库、其他元数据来源和多论文比较。
 
 滚动摘要、长期 Memory 和更复杂的上下文优化暂缓，等真实论文任务证明有需要再继续。
 
@@ -49,6 +43,10 @@ notepad .env
 | `DEEPSEEK_MODEL` | `deepseek-flash` | Agent 使用的模型 |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | DeepSeek 兼容接口地址 |
 | `DEEPSEEK_REASONING_EFFORT` | `high` | 只允许 `low`、`high`、`max` |
+| `JEV_ENABLED` | `false` | 只在 `run_command` 人工审批前调用 Jev；开启会增加一次决策请求 |
+| `JEV_API_KEY` | 无 | 中转站密钥；仅开启 Jev 时使用，保存在被 Git 忽略的 `.env` |
+| `JEV_MODEL` | `jev-1.13` | 中转站公开的 Jev 模型 ID |
+| `JEV_BASE_URL` | `https://api.tu-zi.com` | Jev 中转站地址 |
 | `AGENT_MAX_STEPS` | `12` | 单轮最大工具步骤数，必须为正整数 |
 | `AGENT_CONTEXT_MAX_CHARS` | `30000` | Model Context 字符预算 |
 | `AGENT_OLD_TOOL_OUTPUT_MAX_CHARS` | `1500` | 旧工具输出保留字符数 |
@@ -68,6 +66,7 @@ notepad .env
 $env:DEEPSEEK_MODEL = "deepseek-flash"
 $env:DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 $env:DEEPSEEK_REASONING_EFFORT = "high"
+$env:JEV_ENABLED = "false"
 $env:AGENT_MAX_STEPS = "12"
 $env:AGENT_WEB_PORT = "3000"
 $env:AGENT_WEB_SEARCH_ENABLED = "true"
@@ -116,18 +115,59 @@ npm run web
 - 多轮聊天和历史恢复。
 - 创建新会话，并从下拉列表切换已有会话。
 - 删除当前会话；删除前要求确认，删除后自动加载后继会话。
+- 在标题区域显示当前完整 Session ID，便于关联磁盘会话文件和 Trace。
 - 固定标题栏和输入区，只有中间消息区滚动。
 - 安全显示标题、列表、代码块、行内代码和加粗，不执行模型返回的 HTML。
-- 实时查看“思考、调用工具、生成回答”等阶段，并按步骤查看工具调用。
+- 在宽屏右侧“运行观察”栏实时查看工具链，并审查 Trace 和 Eval；窄屏时观察栏回落到聊天区下方。
 - 使用 `Enter` 发送、`Shift + Enter` 换行，输入框随内容自动增高。
 - Agent 运行时可继续编辑下一条消息，但必须等待当前任务结束后才能提交。
 - 每轮发送前可选择是否向 Agent 开放联网搜索，默认关闭。
 - 在标题栏查看消息数、上下文项数、序列化体积，以及本轮真实 Token 用量。
 - 在页面中允许或拒绝终端命令。
+- 在“运行审查”中查看当前会话的模型调用、工具轨迹、耗时、错误和 Token，并对选中 Run 执行 Eval Case。
 
 运行状态通过浏览器轮询 `/api/status` 获得。“上下文体积”是历史 JSON 的字节数；“本轮 Token”来自模型响应的 `usage`，两者不能互相替代。第一版没有逐字流式输出。
 
 Web 服务只监听本机地址。CLI 和 Web UI 共用 `.myagent/sessions/` 中的会话文件，不要同时操作同一会话。
+
+## Trace 与 Eval
+
+每次 `runAgent()` 都会生成唯一 Run ID，并把结构化事件追加到 `.myagent/traces/<run-id>.jsonl`。Trace 与 Session 分开保存：Session 负责模型后续对话所需的历史，Trace 负责人工审查和评估，不会被重新发送给模型。
+
+```text
+Agent Loop
+  → run_started
+  → model_call_completed
+  → tool_call_started / tool_call_completed
+  → approval_requested / approval_resolved（仅命令工具）
+  → run_completed 或 run_failed
+  → .myagent/traces/<run-id>.jsonl
+```
+
+Trace 默认记录任务、模型、联网开关、工具名称与参数、状态、耗时、输出字符数、裁剪标记、上下文统计和 Token usage。它不保存完整工具输出，也不记录模型隐藏推理。CLI 和 Web UI 产生的 Run 都会写入同一目录，并用 Session ID 关联到对应会话。
+
+`evals/cases.json` 保存确定性 Eval Case。当前规则会先检查任务 Prompt 与联网开关是否匹配，再检查必需/禁止工具、最大工具调用数、最大模型调用数、工具错误数和最终答案正则。Eval 只是用规则读取已有 Trace，不会再调用模型，因此可重复、无额外 API 开销。
+
+运行一个用例并立即评估，会调用一次真实 Agent：
+
+```powershell
+npm run eval:run -- web-start-command
+```
+
+对已有 Trace 重新评估，不调用模型：
+
+```powershell
+npm run eval:trace -- <run-id> web-start-command
+```
+
+Web UI 右侧“运行观察”栏中的 `Trace + Eval` 只显示当前会话的 Run。选择 Run 后可以阅读完整事件轨迹；再选择 Eval Case 并点击“评估”，即可看到逐项 `PASS`/`FAIL`。Eval Case 应与实际任务匹配，把任意聊天 Run 套用到无关 Case 得到的失败没有比较意义。
+
+Trace/Eval 的确定性测试不会访问网络或调用 DeepSeek：
+
+```powershell
+npm run test:trace
+npm run test:eval
+```
 
 ## Agent 工具
 
@@ -135,6 +175,10 @@ Web 服务只监听本机地址。CLI 和 Web UI 共用 `.myagent/sessions/` 中
 - `search_files(path, query)`：按普通文本搜索文件内容。
 - `grep_files(path, pattern)`：按正则表达式搜索文件内容。
 - `knowledge_search(query, top_k)`：从本地 Chroma 知识库语义检索相关片段。
+- `arxiv_search(query, max_results)`：通过 arXiv API 搜索论文元数据，不下载全文。
+- `paper_import(arxiv_id)`：下载指定 arXiv PDF，按页解析并写入独立论文索引。
+- `paper_search(query, arxiv_id?, top_k?)`：检索已导入论文，返回标题、arXiv ID、页码与 chunk ID。
+- `paper_save_guide(paper_id, content)`：把已导入论文的 Markdown 导读保存在论文目录；旧版本不覆盖。
 - `web_search(query)`：通过公开 RSS 入口搜索实时网页结果。
 - `fetch_web_page(url, find?)`：读取搜索结果中的 HTML 或纯文本网页正文；可用 `find` 定位长网页中的相关段落。
 - `read_file(path)`：读取 UTF-8 文件。
@@ -161,35 +205,76 @@ Agent 会按信息来源选择最小工具路径：公开官方信息使用联�
 
 本地 RAG 使用 TypeScript 完成文档切块、Embedding、索引同步和查询。Embedding 通过 Transformers.js 直接加载已有的 `all-MiniLM-L6-v2` ONNX 文件，并设置为只使用本地文件，不会自动联网下载模型。Chroma 使用 npm 包提供的 Windows x64 原生绑定启动本地 Server，不需要 Python bridge 或付费服务。
 
-把 `.md` 或 `.txt` 文件放入 `knowledge/` 后，在两个终端中依次运行：
+把 `.md` 或 `.txt` 文件放入 `knowledge/` 后，保持 Chroma Server 运行，再启动 Agent：
 
 ```powershell
 # 终端一：保持本地 Chroma Server 运行
 npm run knowledge:server
 
-# 终端二：建立或刷新索引
-npm run knowledge:index
+# 终端二：启动 Agent；首次调用 knowledge_search 时自动建立索引
+npm run web
 
 # 可选：不调用 DeepSeek，直接验证检索结果
 npm run knowledge:query -- "What is the development principle of myAgent?"
 ```
 
-然后正常启动 CLI 或 Web UI。Agent 可以调用 `knowledge_search`，结果包含：
+也可以用 `npm run dev` 启动 CLI。`knowledge_search` 与 `knowledge:query` 都会在查询前检查知识文档；首次检索或文档发生变化时自动同步索引，内容未变时跳过文档 Embedding。第一次检索可能因此更慢。`npm run knowledge:index` 仍可用于手动排错，但日常使用不必运行。Agent 检索结果包含：
 
 - `source`：知识文件相对路径。
 - `id`：稳定的 chunk ID，例如 `example.md#0001`。
 - `text`：召回的原始片段。
 - `distance`：余弦距离，越小通常越相关。
 
-索引保存到 `.myagent/chroma/`。知识文件发生变化后，检索会提示重新执行 `npm run knowledge:index`；语料未变化时重复索引不会重新计算向量。
+索引保存到 `.myagent/chroma/`。Chroma Server 仍需单独保持运行；如果没有启动，检索会提示运行 `npm run knowledge:server`。
 
 默认模型主要适合英文语义检索。中文文档可以运行，但应通过实际查询评估召回质量，不能只根据“成功返回结果”判断效果。
 
+### arXiv 论文库与 PDF 解析
+
+论文能力采用一条可观察的流水线：
+
+```text
+arxiv_search（只看元数据）
+        ↓ 选择论文
+paper_import（下载 PDF → PDF.js 逐页提取 → 分页切块 → 本地 Embedding → Chroma）
+        ↓
+paper_search（召回证据 → 标题 / arXiv ID / 页码 / chunk ID）
+        ↓
+Agent 按轻量模板撰写带证据的 Markdown 导读
+        ↓
+paper_save_guide（保存 .md）＋聊天中显示同一份导读
+```
+
+PDF 解析器是论文库内部能力，不单独暴露给模型，避免 Agent 在“搜索、下载、解析、索引”之间手工编排实现细节。为了学习和排错，它仍提供统一 CLI：
+
+```powershell
+# 解析任意本地 PDF，只输出页数、字符数和首页预览
+npm run paper -- parse "D:\papers\example.pdf"
+
+# 搜索 arXiv 元数据（需要联网，不需要 API Key）
+npm run paper -- search "retrieval augmented generation"
+
+# 先保持 npm run knowledge:server 运行，再下载、解析并索引论文
+npm run paper -- import 1706.03762
+
+# 检索全部已导入论文，或用 --paper 限定一篇
+npm run paper -- query "What is scaled dot-product attention?"
+npm run paper -- query "What is scaled dot-product attention?" --paper 1706.03762
+```
+
+论文文件保存在 `.myagent/papers/`，向量写入默认名为 `myagent_papers` 的独立 collection。它与普通 `knowledge/` collection 分离，因此执行 `knowledge:index` 不会误删论文片段。`PAPER_MAX_PDF_BYTES` 默认限制单篇 PDF 为 50 MB；arXiv 连续请求之间至少间隔 3 秒。以上流程使用公开 arXiv API、本地 PDF.js、本地 ONNX Embedding 和本地 Chroma，不需要新增付费服务。
+
+让 Agent 写导读时，可以只说“为 arXiv:1706.03762 写一份中文论文导读”或“找一篇关于某主题的 arXiv 论文，阅读后写导读”。默认结构包括一句话概览、研究问题与贡献、核心方法、实验与主要结果、局限与阅读提醒。Agent 会限定同一篇论文，分主题检索正文，并为实质性结论附页码及 chunk ID；检索不到的内容应明确标注，而不是补写。导读同时显示在聊天中，并保存到 `.myagent/papers/<论文目录>/guide.md`；再次生成时写入 `guide-2.md` 等新文件。这个目录默认被 Git 忽略，需要长期留存或分享时请自行复制导读。
+
+Web UI 的“允许联网搜索”开关同时控制 `arxiv_search` 和 `paper_import`；关闭后模型仍可使用本地 `paper_search` 与 `paper_save_guide`。生成导读前仍需单独启动并保持 Chroma Server 运行；本轮没有修改 Web UI 布局。
+
 ## Human-in-the-loop
 
-每次调用 `run_command` 都需要人工批准。
+每次调用 `run_command` 都需要人工批准。开启 `JEV_ENABLED=true` 后，Agent 会先把本轮任务、待执行命令及模型给出的原因送到中转站的 Jev `/v1/systemone` 接口，请它在“倾向允许 / 谨慎复核 / 倾向拒绝”之间选择；随后 CLI 和 Web UI 都显示建议、可用时的置信度与选项概率，再等待你手动批准或拒绝。Jev 的回答永远不会自动执行或拒绝命令；调用失败或超时也会继续显示人工审批，并注明辅助判断不可用。
 
 CLI 会在终端展示命令和原因；Web UI 会显示“允许”和“拒绝”按钮。拒绝后，Agent Loop 不会崩溃，而是把拒绝结果交还给模型继续处理。
+
+Jev 是决策辅助，不是安全边界。发送前会遮盖常见 API Key、Bearer Token、密码赋值，但不能保证识别所有秘密；不要在命令中放入不愿发送给中转站的敏感数据。它的置信度不是本项目上的准确率。每次审查结果另记入 Trace；现有 Token 统计只覆盖 DeepSeek，不包含 Jev 的用量。接口格式见[中转站 Jev 文档](https://api.tu-zi.com/docs/models/jev-1-13)。
 
 命令执行具有以下限制：
 
@@ -308,6 +393,9 @@ myAgent/
 │   ├── context.ts        Model Context 构建、旧输出裁剪与滑动窗口
 │   ├── knowledge-cli.ts  知识库索引与手动查询入口
 │   ├── knowledge.ts      文档切块、本地 Embedding 与 Chroma 检索
+│   ├── paper-cli.ts      论文解析、发现、导入与查询入口
+│   ├── paper.ts          arXiv 元数据、论文下载、切块、索引与检索
+│   ├── pdf.ts            基于 PDF.js 的逐页文本解析
 │   ├── session.ts        多会话创建、选择、删除、加载与保存
 │   ├── token-usage.ts    模型 usage 归一化与本轮累计
 │   ├── tools.ts          工具定义与执行
@@ -316,7 +404,10 @@ myAgent/
 │   └── web.ts            本地 Web 服务
 ├── tests/                不调用模型 API 的确定性测试
 │   ├── config.test.ts
+│   ├── arxiv.test.ts
 │   ├── knowledge.test.ts
+│   ├── papers.test.ts
+│   ├── pdf.test.ts
 │   ├── context.test.ts
 │   ├── session.test.ts
 │   ├── token-usage.test.ts
@@ -339,15 +430,25 @@ myAgent/
 ```powershell
 npm run check
 npm run test:config
+npm run test:jev
 npm run test:knowledge
 npm run test:tools
 npm run test:session
 npm run test:usage
 npm run test:context
 npm run test:web-search
+npm run test:papers
 ```
 
-这些命令都不请求模型 API。配置测试会在临时目录验证 `.env` 自动加载、默认值、覆盖和非法值；知识库测试只验证切块和哈希，不启动 Chroma 或加载 ONNX；工具测试会运行本地 PowerShell 命令，但不会调用 DeepSeek；Token 测试使用固定 usage 数据；上下文测试使用固定历史验证分离、裁剪和滑动窗口；联网搜索测试只解析固定 RSS 样本，不会访问外网。
+这些命令都不请求模型 API。配置测试会在临时目录验证 `.env` 自动加载、默认值、覆盖和非法值；知识库测试只验证切块和哈希，不启动 Chroma 或加载 ONNX；论文测试使用固定 Atom Feed、动态生成的最小 PDF 和临时论文目录，验证元数据、真实解析、分页切块与导读保存不覆盖旧版，不访问 arXiv 或 Chroma；工具测试会运行本地 PowerShell 命令，但不会调用 DeepSeek；Token 测试使用固定 usage 数据；上下文测试使用固定历史验证分离、裁剪和滑动窗口；联网搜索测试只解析固定 RSS 样本，不会访问外网。
+
+要验证 `knowledge_search` 自动建索引与更新，先启动 Chroma Server，再运行：
+
+```powershell
+npm run test:knowledge:integration
+```
+
+该测试使用临时知识文档和独立 collection，结束时清理；会加载本地 ONNX 模型，但不调用 DeepSeek。
 
 ## TypeScript 编译产物
 
@@ -368,9 +469,10 @@ npm run test:web-search
 - Web UI 只实现常用 Markdown 子集，没有消息编辑、文件上传和完整 Markdown 扩展。
 - Token usage 只保留当前进程中的最近一轮，不持久化，也还没有形成历史趋势图或预算告警。
 - 联网开关只控制工具是否可用，不改善 Bing RSS 的搜索排序；技术文档查询可能返回低相关或非官方结果。
-- 网页正文读取不执行 JavaScript，不能读取登录/付费墙内容，也暂不支持 PDF。
-- 本地 RAG 需要单独保持 Chroma Server 运行，并在知识文件变化后显式刷新索引。
+- 网页正文读取不执行 JavaScript，不能读取登录/付费墙内容；通用网页工具不读 PDF，arXiv PDF 由论文导入流水线处理。
+- 本地 RAG 需要单独保持 Chroma Server 运行；首次检索或知识文件变化后的首次检索会自动同步索引，可能需要等待模型生成向量。
 - 当前 RAG 没有关键词混合检索、重排、距离阈值或检索质量评测集。
-- 暂无论文 PDF 解析、学术元数据专用检索、长期 Memory、滚动摘要、相关历史检索、patch 工具和 API 自动重试。
+- PDF 文本提取以页为引用边界，但尚未处理扫描件 OCR、复杂双栏阅读顺序、公式结构、表格和图片。
+- 论文来源目前只接入 arXiv；尚无 DOI、Crossref、Semantic Scholar、长期 Memory、滚动摘要、相关历史检索、patch 工具和 API 自动重试。
 
 这些边界是后续学习路线，不需要一次全部实现。

@@ -96,7 +96,7 @@ async function loadEmbeddingPipeline(): Promise<EmbeddingPipeline> {
 }
 
 // 使用本地 MiniLM 模型生成归一化的 384 维向量。
-async function embedTexts(texts: string[]): Promise<number[][]> {
+export async function embedTexts(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
   const embed = await loadEmbeddingPipeline();
@@ -216,7 +216,7 @@ export function hashKnowledgeChunks(chunks: KnowledgeChunk[]): string {
 }
 
 // 连接 Chroma Server，并把连接错误转换为可操作提示。
-async function connectChroma(): Promise<ChromaClient> {
+export async function connectChroma(): Promise<ChromaClient> {
   const client = createChromaClient();
 
   try {
@@ -231,43 +231,40 @@ async function connectChroma(): Promise<ChromaClient> {
   return client;
 }
 
-// 打开知识集合；首次索引时创建一个余弦距离集合。
-async function openCollection(create: boolean): Promise<Collection> {
+// 打开知识集合；首次使用时创建一个余弦距离集合。
+async function openCollection(): Promise<Collection> {
   const client = await connectChroma();
-
-  if (create) {
-    return client.getOrCreateCollection({
-      name: collectionName(),
-      embeddingFunction: null,
-      configuration: { hnsw: { space: "cosine" } }
-    });
-  }
-
-  try {
-    return await client.getCollection({ name: collectionName() });
-  } catch {
-    throw new Error("Knowledge index does not exist. Run npm run knowledge:index first.");
-  }
+  return client.getOrCreateCollection({
+    name: collectionName(),
+    embeddingFunction: null,
+    configuration: { hnsw: { space: "cosine" } }
+  });
 }
 
-// 建立或刷新本地知识库的 Chroma 向量索引。
-export async function indexKnowledgeBase(): Promise<KnowledgeIndexResult> {
+// 检查语料哈希，并在必要时同步知识索引后返回可查询的集合。
+async function ensureKnowledgeIndex(): Promise<{
+  collection: Collection;
+  result: KnowledgeIndexResult;
+}> {
   const chunks = await loadKnowledgeChunks();
   if (chunks.length === 0) {
     throw new Error("No .md or .txt knowledge documents were found.");
   }
 
-  const collection = await openCollection(true);
+  const collection = await openCollection();
   const corpusHash = hashKnowledgeChunks(chunks);
   const currentHash = collection.metadata?.corpus_sha256;
   const currentCount = await collection.count();
 
   if (currentHash === corpusHash && currentCount === chunks.length) {
     return {
-      changed: false,
-      documents: new Set(chunks.map((chunk) => chunk.source)).size,
-      chunks: chunks.length,
-      collection: collectionName()
+      collection,
+      result: {
+        changed: false,
+        documents: new Set(chunks.map((chunk) => chunk.source)).size,
+        chunks: chunks.length,
+        collection: collectionName()
+      }
     };
   }
 
@@ -290,11 +287,19 @@ export async function indexKnowledgeBase(): Promise<KnowledgeIndexResult> {
   await collection.modify({ metadata: { corpus_sha256: corpusHash } });
 
   return {
-    changed: true,
-    documents: new Set(chunks.map((chunk) => chunk.source)).size,
-    chunks: chunks.length,
-    collection: collectionName()
+    collection,
+    result: {
+      changed: true,
+      documents: new Set(chunks.map((chunk) => chunk.source)).size,
+      chunks: chunks.length,
+      collection: collectionName()
+    }
   };
+}
+
+// 手动建立或刷新知识索引，供 CLI 排错使用。
+export async function indexKnowledgeBase(): Promise<KnowledgeIndexResult> {
+  return (await ensureKnowledgeIndex()).result;
 }
 
 // 在本地 Chroma 索引中执行一次语义检索。
@@ -302,13 +307,7 @@ export async function searchKnowledge(query: string, topK = 5): Promise<Knowledg
   const normalizedQuery = query.trim();
   if (!normalizedQuery) throw new Error("Knowledge query cannot be empty.");
 
-  const chunks = await loadKnowledgeChunks();
-  const collection = await openCollection(false);
-  const expectedHash = hashKnowledgeChunks(chunks);
-
-  if (collection.metadata?.corpus_sha256 !== expectedHash) {
-    throw new Error("Knowledge documents changed. Run npm run knowledge:index again.");
-  }
+  const { collection } = await ensureKnowledgeIndex();
 
   const count = await collection.count();
   if (count === 0) return [];

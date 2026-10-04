@@ -12,6 +12,208 @@
 
 ---
 
+## 2026-09-29：Jev 作为命令人工审批的辅助判断
+
+### 目标与数据流
+
+- 只在 `run_command` 即将弹出人工审批时调用 Jev；Jev 返回结构化建议，CLI 和 Web UI 同时展示，最终批准权仍由用户掌握。
+- `run_command → Jev /v1/systemone → Trace → approveCommand(review) → CLI/Web 用户决定 → 执行或拒绝`。
+
+### 方案与验证
+
+- 对照兔子 API 的 Jev 原生接口、JevAI tool-guard 和 OpenRouter SDK。现有中转站 Key 适用 `/v1/systemone`，因此沿用 Node `fetch`，不增加依赖或复制外部代码。
+- 请求前遮盖常见密钥并设置 8 秒超时；失败时把“辅助判断不可用”交给人工审批界面，不自动放行或拒绝。
+- 离线测试覆盖请求格式、两种响应外形、脱敏、Jev 成功与故障时的审批顺序、用户拒绝后的不执行行为。
+- `npm run check`、`npm run test:config`、`npm run test:jev`、`npm run test:session`、`npm run test:tools`、`npm run test:trace`、`npm run test:eval` 均通过；网页内联脚本语法检查通过。
+- 使用本地测试 Key 对只读 `Get-ChildItem -Name` 做一次真实 Jev 决策请求，返回 `allow`、置信度 `0.99`。这只证明接口可调用；CLI/Web 的人工可视操作仍需用户在实际界面中验收，不能把模型建议或置信度当作已验证的安全判定。
+
+---
+
+## 2026-09-29：Web 会话 ID 与右侧运行观察栏
+
+### 目标与数据流
+
+- 在页面中直接显示当前完整 Session ID，便于关联 `.myagent/sessions/` 和 Trace。
+- 将实时工具链、Trace 和 Eval 从输入区移到宽屏右侧，避免运行信息挤压聊天输入空间。
+
+```text
+/api/sessions、/api/messages → 标题栏 Session ID
+/api/status                 → 右侧实时工具链
+/api/traces、/api/eval      → 右侧 Trace + Eval
+```
+
+### 方案选择
+
+- 参考 `assistant-ui` 的工具调用组件化思路，以及 Langfuse、Phoenix 将 Trace/Eval 作为独立观察面的分区方式。
+- 这些项目分别需要 React 运行时或完整可观测性平台，超出当前学习项目范围，因此只参考交互分区，不引入依赖或复制代码。
+- 使用原生 CSS Grid 实现宽屏双栏；窄屏按 DOM 顺序回落为单栏。
+
+### 实现
+
+- 标题区新增完整 Session ID，并在创建、切换或删除会话后同步刷新。
+- 页面主体改为聊天列和“运行观察”侧栏；聊天列继续保持消息独立滚动和输入区固定。
+- 实时工具链移动到侧栏顶部；没有工具调用时显示明确空状态。
+- `Trace + Eval` 移动到侧栏并默认展开，保留原有 Run、事件和逐项评估功能。
+- 回答消息不再重复内嵌工具列表，工具路径统一从右侧观察栏查看。
+- 900px 以下回落为上下布局，保持手机和窄窗口可用。
+
+### 验证
+
+```text
+npm run check         PASS
+npm run test:trace    PASS
+npm run test:eval     PASS
+npm run test:session  PASS
+```
+
+实际浏览器验证结果：
+
+- 1440px 视口下，聊天列为 980px，右侧运行观察栏为 420px；工具链和 Trace/Eval 均位于右栏。
+- 390px 视口下，观察栏回落到聊天区下方，完整 Session ID 和输入区仍可见。
+- 浏览器控制台没有错误或警告。
+
+---
+
+## 2026-09-23：知识库首次检索时自动同步索引
+
+### 目标与数据流
+
+用户仍手动启动 Chroma Server；Agent 调用 `knowledge_search` 或手动执行 `knowledge:query` 时，程序读取 `knowledge/` 文档并核对语料哈希与片段数量。索引缺失或文档变化时同步索引，然后直接在同一个 collection 上查询。语料未变时跳过文档 Embedding。
+
+```text
+knowledge_search → 检查知识文档与索引 → 必要时同步 → 向量查询 → 返回证据
+```
+
+### 实现
+
+- `src/knowledge.ts`：抽出内部 `ensureKnowledgeIndex()`，让手动索引命令与检索复用原有的哈希检查、向量写入和旧片段删除逻辑。
+- 保留 `knowledge:index` 作为手动排错命令；日常使用不再要求先运行它。
+- 更新 Agent 工具说明、README 和示例知识文档。
+- 新增独立的 Chroma 集成测试：通过真正的 `knowledge_search` 工具调用，使用临时文档和一次性 collection 验证首次检索建索引、未变化时跳过更新、文档变化后自动刷新，并在结束时清理测试数据。
+
+### 验证
+
+`npm run check`、`npm run test:knowledge`、`npm run test:tools` 和 `npm run test:knowledge:integration` 均通过。集成测试使用本机已运行的 Chroma Server 和本地 ONNX 模型，没有调用 DeepSeek。
+
+---
+
+## 2026-09-22：结构化 Trace、确定性 Eval 与 Web 运行审查
+
+### 开发目标
+
+- 让一次 Agent Run 的模型调用、工具选择、错误、审批、停止原因和 Token 用量可以追溯。
+- 用不调用模型的确定性规则评估工具路径和回答中的关键特征。
+- 在现有 Web UI 中增加轻量审查入口，不重写聊天前端。
+
+### 数据流
+
+```text
+Agent Loop → TraceSink → .myagent/traces/<run-id>.jsonl
+                                ↓
+                       evaluateTrace + Eval Case
+                                ↓
+                     CLI 报告 / Web PASS、FAIL
+```
+
+Session History 继续负责多轮上下文，Trace 单独负责观测和评估。Trace 不进入 Model Context，避免为了可观测性额外消耗输入 Token。
+
+### 实现变更
+
+- 新增 `src/trace.ts`：定义结构化事件、Run 摘要和 JSONL 持久化存储。
+- `src/agent.ts` 在 Run、模型调用、工具调用、命令审批、正常结束和失败处发出事件。
+- CLI 与 Web 都传入同一个 Trace 接口，并用 Session ID 关联 Run。
+- 新增 `src/eval.ts`：检查 Case Prompt、联网开关、必需/禁止工具、调用上限、错误数和答案正则。
+- 新增 `evals/cases.json`，提供本地文件定位、官方网页查询和零工具概念回答三个学习用例。
+- 新增 `src/eval-cli.ts` 与 `eval:run`、`eval:trace` 命令。
+- Web 新增 Trace 列表、单 Run 详情和 Eval API；页面增加可折叠“运行审查”区域。
+- 新增 `tests/trace.test.ts`、`tests/eval.test.ts`，并在 Session 集成测试中覆盖模型失败 Trace。
+
+### 当前边界
+
+- Eval 是规则评估，不等于答案事实正确性或语言质量的完整评分。
+- Trace 不保存完整工具输出和模型隐藏推理，只保存审查 Agent 决策路径所需的元数据。
+- Eval Case 必须与运行任务匹配；Web 允许人工选择，但不会猜测任意聊天对应哪个 Case。
+- 当前没有跨多次运行的统计看板，也没有 LLM-as-a-Judge。
+
+### 验证
+
+先用不可连接的本地假模型地址验证 Web 失败路径，API 返回的 Trace 为：
+
+```text
+run_started → run_failed
+```
+
+随后在浏览器中加载一个临时确定性 Run，确认时间线、Token、上下文、Case 下拉框和逐项结果均可见，页面显示 `PASS`。测试消息和临时 Trace 已在验证后删除。
+
+完整确定性回归：
+
+```text
+npm run check            PASS
+npm run test:trace       PASS
+npm run test:eval        PASS
+npm run test:session     PASS
+npm run test:tools       PASS
+npm run test:config      PASS
+npm run test:context     PASS
+npm run test:usage       PASS
+npm run test:web-search  PASS
+npm run test:knowledge   PASS
+npm run test:papers      PASS
+```
+
+以上命令没有调用真实 DeepSeek；没有执行 `eval:run`，因此没有产生模型 API 开销。
+
+---
+
+## 2026-09-22：arXiv 论文导入与本地 PDF RAG
+
+### 开发目标
+
+- 同时完成论文自动获取的两轮最小实现：本地 PDF 解析/论文库，以及 Agent 可调用的论文发现、导入和检索工具。
+- 继续使用免费公开接口、本地 ONNX Embedding 与本地 Chroma，不增加付费服务。
+
+### 数据流
+
+```text
+arxiv_search → 用户/Agent 选择 → paper_import
+     → PDF 下载 → PDF.js 逐页文本 → 分页切块
+     → 本地 MiniLM Embedding → myagent_papers collection
+     → paper_search → 带标题、arXiv ID、页码、chunk ID 的证据
+```
+
+### 实现变更
+
+- 根据学习阶段的可读性反馈，将原先拆开的 `arxiv.ts` 和 `papers.ts` 合并为 `paper.ts`；`pdf.ts` 继续独立，`paper-cli.ts` 继续作为免模型调试入口。该调整只改变源码组织，不改变三个 Agent Tool 的 interface 与数据流。
+- 新增 `paper.ts`：集中处理 arXiv 元数据、论文下载、缓存、分页切块、独立 Chroma collection 与语义检索；结果上限 10，连续请求至少间隔 3 秒。
+- 新增 `pdf.ts`：使用 `pdfjs-dist` 在 TypeScript 内逐页提取文本，不依赖 Python。
+- 新增 `paper-cli.ts` 与 `npm run paper -- ...`，可绕过模型单独观察每一阶段。
+- 新增 `arxiv_search`、`paper_import`、`paper_search` 三个 Agent Tool；前两个跟随联网开关，已导入论文可离线检索。
+- 普通知识库与论文库复用本地 Embedding/Chroma 连接，但使用不同 collection，避免索引刷新互相删除数据。
+- Web UI 只复用已有联网开关，没有调整页面设计。
+
+### 确定性验证
+
+```text
+npm run check          PASS
+npm run test:papers    PASS
+npm run test:config    PASS
+npm run test:tools     PASS
+```
+
+`test:papers` 使用固定 Atom XML 和动态生成的单页 PDF，不访问外网、不启动 Chroma、不调用 DeepSeek。
+
+### 真实集成验收
+
+- arXiv API 搜索成功返回真实论文元数据。
+- 首次导入 `1706.03762` 成功：解析 `Attention Is All You Need` 共 15 页，生成 41 个分页片段并写入 `myagent_papers`。
+- 重复导入返回 `cached: true`，没有重新解析或计算向量。
+- 查询 `scaled dot-product attention` 的首条结果为第 4 页 `1706.03762v7#p0004-c0001`，包含对应公式和说明。
+- 集成验收不调用 DeepSeek；完成后已停止临时启动的 Chroma Server。
+
+验收中发现 `.env` 的 `CHROMA_MODEL_PATH` 仍保留示例用户名，导致首次索引无法加载本地模型。已将该条改为当前机器上实际存在且文件完整的模型目录；没有读取或修改 API Key。
+
+---
+
 ## 2026-09-22：工具路由与停止策略
 
 ### 开发目标
@@ -1097,3 +1299,11 @@ npm audit                0 vulnerabilities
 ```
 
 验证完成后已停止临时启动的 Chroma Server；日常使用时由用户执行 `npm run knowledge:server` 保持服务运行。
+
+## 2026-09-29：单篇论文 Markdown 导读
+
+- 保持现有 `arxiv_search → paper_import → paper_search` 工具链；当用户明确要求 Agent 自选一篇论文写导读时，允许选择清晰匹配的一篇并导入。
+- 在系统提示中加入轻量导读结构，要求围绕同一 arXiv ID 分别检索问题、方法、结果和局限；实质性结论标注页码与 chunk ID，缺证据时明确说明。
+- 新增 `paper_save_guide`：导读同时在聊天中显示并保存到该论文的 `.myagent/papers/` 目录；再次生成用递增文件名，不覆盖旧版。
+- 参考 PaperQA2 的“先收集证据再生成回答”思路；没有引入 Python 或新的 Agent 框架依赖。
+- 离线验证：`npm run check`、`npm run test:papers`、`npm run test:tools` 通过。尚未用真实模型验证完整的自主选文、检索、写作链路。

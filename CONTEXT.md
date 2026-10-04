@@ -52,6 +52,14 @@ _Avoid_: Memory
 A selected collection of Papers available for repeated retrieval and synthesis.
 _Avoid_: Session History, Memory
 
+**Paper Library**:
+The locally persisted PDFs, parsed pages, metadata, and vector index used for repeated Paper retrieval.
+_Avoid_: General knowledge folder, Session History
+
+**PDF Parser**:
+An internal Paper Library component that turns PDF bytes into page-numbered text before chunking and indexing.
+_Avoid_: Agent Tool, OCR system
+
 **Model Context**:
 The bounded set of instructions, summaries, recent messages, retrieved Evidence, and Tool results sent in one model request.
 _Avoid_: Session, Memory
@@ -71,3 +79,15 @@ _Avoid_: Memory
 **Session History**:
 The complete persisted event sequence for one Session, including user messages, model output, Tool calls, and Tool results.
 _Avoid_: Model Context
+
+**Run**:
+One bounded execution of the Agent Loop for a single user task, identified independently from its containing Session.
+_Avoid_: Session, model call
+
+**Trace**:
+The ordered, structured event record of one Run, used for observability and evaluation but never sent back as Model Context.
+_Avoid_: Session History, console log, hidden reasoning
+
+**Eval Case**:
+A repeatable task plus deterministic expectations used to assess whether a matching Trace followed the intended tool path and answer constraints.
+_Avoid_: Unit test, benchmark score, LLM judge

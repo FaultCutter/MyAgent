@@ -6,6 +6,16 @@ import type { ResponseInput } from "openai/resources/responses/responses";
 import { runAgent } from "../src/agent.js";
 import { createConfig } from "../src/config.js";
 import { SessionStore } from "../src/session.js";
+import type { AgentTraceEvent, TraceSink } from "../src/trace.js";
+
+class TestTraceSink implements TraceSink {
+  readonly events: AgentTraceEvent[] = [];
+
+  // 在内存中收集 Agent 事件，供集成测试断言。
+  async record(event: AgentTraceEvent): Promise<void> {
+    this.events.push(event);
+  }
+}
 
 const testDirectory = await mkdtemp(path.join(tmpdir(), "my-agent-session-"));
 const store = new SessionStore(testDirectory);
@@ -29,6 +39,7 @@ try {
   assert.deepEqual((await store.loadCurrent()).history, firstHistory);
 
   const thirdSession = await store.create();
+  const traceSink = new TestTraceSink();
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {
     throw new Error("simulated model failure");
@@ -39,6 +50,8 @@ try {
       runAgent(
         "即使模型失败也保存我",
         {
+          sessionId: thirdSession.id,
+          trace: traceSink,
           onHistoryChange: async (history) => {
             await store.save(thirdSession.id, history);
           }
@@ -60,6 +73,14 @@ try {
   assert.deepEqual((await store.load(thirdSession.id)).history, [
     { role: "user", content: "即使模型失败也保存我" }
   ]);
+  assert.deepEqual(
+    traceSink.events.map((event) => event.type),
+    ["run_started", "run_failed"],
+    "模型失败也应保留可审查的完整失败轨迹"
+  );
+  assert.equal(traceSink.events[0]?.sessionId, thirdSession.id);
+  assert.equal(traceSink.events[1]?.sessionId, thirdSession.id);
+  assert.equal(traceSink.events[0]?.runId, traceSink.events[1]?.runId);
 
   const deletionStore = new SessionStore(path.join(testDirectory, "delete-case"));
   const sessionToDelete = await deletionStore.create();

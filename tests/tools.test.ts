@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { SYSTEM_PROMPT } from "../src/agent.js";
-import { executeTool, toolDefinitions } from "../src/tools.js";
+import { enabledToolDefinitions, executeTool, toolDefinitions } from "../src/tools.js";
 
 // 按名称读取工具定义，验证模型实际看到的路由说明。
 function toolDescription(name: string): string {
@@ -22,6 +22,19 @@ assert.match(SYSTEM_PROMPT, /For informational questions, answer directly/);
 assert.match(toolDescription("knowledge_search"), /do not use for ordinary public documentation/);
 assert.match(toolDescription("fetch_web_page"), /Stop researching once/);
 assert.match(toolDescription("run_command"), /Never use it instead of web, knowledge, or file tools/);
+assert.match(toolDescription("arxiv_search"), /Search arXiv metadata/);
+assert.match(toolDescription("paper_import"), /extract page text/);
+assert.match(toolDescription("paper_search"), /already imported local paper library/);
+assert.match(toolDescription("paper_save_guide"), /never overwritten/);
+assert.match(SYSTEM_PROMPT, /cite title, arXiv ID, page, and chunk ID/);
+assert.match(SYSTEM_PROMPT, /research problem, method, main results, and limitations/);
+assert.match(SYSTEM_PROMPT, /save the complete Markdown with paper_save_guide/);
+
+const offlineTools = enabledToolDefinitions(false).map((tool) => tool.name);
+assert.equal(offlineTools.includes("arxiv_search"), false);
+assert.equal(offlineTools.includes("paper_import"), false);
+assert.equal(offlineTools.includes("paper_search"), true);
+assert.equal(offlineTools.includes("paper_save_guide"), true);
 
 assert.equal(
   toolDefinitions.some((tool) => tool.name === "knowledge_search"),

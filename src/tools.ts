@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { config } from "./config.js";
 import { searchKnowledge } from "./knowledge.js";
+import { importArxivPaper, savePaperGuide, searchArxiv, searchPapers } from "./paper.js";
 import { searchWeb } from "./web-search.js";
 import { fetchWebPage } from "./web-page.js";
 
@@ -16,6 +17,10 @@ export type ToolName =
   | "search_files"
   | "grep_files"
   | "knowledge_search"
+  | "arxiv_search"
+  | "paper_import"
+  | "paper_search"
+  | "paper_save_guide"
   | "web_search"
   | "fetch_web_page"
   | "read_file"
@@ -71,7 +76,7 @@ export const toolDefinitions = [
     type: "function" as const,
     name: "knowledge_search",
     description:
-      "Search the user's indexed local papers, notes, and private reference material. Use only when the user asks for local knowledge or the task clearly depends on it; do not use for ordinary public documentation. Cite source and chunk ID.",
+      "Search the user's local notes and private reference material, automatically refreshing the knowledge index when files change. Use only when the user asks for local knowledge or the task clearly depends on it; do not use for ordinary public documentation. Cite source and chunk ID.",
     strict: true,
     parameters: {
       type: "object",
@@ -83,6 +88,79 @@ export const toolDefinitions = [
         }
       },
       required: ["query"],
+      additionalProperties: false
+    }
+  },
+  {
+    type: "function" as const,
+    name: "arxiv_search",
+    description:
+      "Search arXiv metadata for academic papers. Use this instead of general web search when the user wants to discover papers. Returns titles, authors, abstracts, IDs, and PDF URLs without importing anything.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Focused paper topic or title keywords" },
+        max_results: {
+          type: "number",
+          description: "Number of results; defaults to 5 and is capped at 10"
+        }
+      },
+      required: ["query"],
+      additionalProperties: false
+    }
+  },
+  {
+    type: "function" as const,
+    name: "paper_import",
+    description:
+      "Download one selected arXiv PDF, extract page text, and index it in the local paper library. Use when the user identifies a paper or asks you to select one and read its full text. Requires web access and the local Chroma server.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        arxiv_id: { type: "string", description: "arXiv ID such as 1706.03762" }
+      },
+      required: ["arxiv_id"],
+      additionalProperties: false
+    }
+  },
+  {
+    type: "function" as const,
+    name: "paper_search",
+    description:
+      "Search the already imported local paper library. Use for questions about paper content and cite title, arXiv ID, page, and chunk ID from the returned evidence.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Focused semantic question about paper content" },
+        arxiv_id: {
+          type: "string",
+          description: "Optional arXiv ID used to limit retrieval to one paper"
+        },
+        top_k: {
+          type: "number",
+          description: "Number of chunks to return; defaults to 5 and is capped at 10"
+        }
+      },
+      required: ["query"],
+      additionalProperties: false
+    }
+  },
+  {
+    type: "function" as const,
+    name: "paper_save_guide",
+    description:
+      "Save a finished Markdown reading guide for an imported paper. Use the versioned paperId returned by paper_import or paper_search. Existing guides are never overwritten; returns the saved file path. No web access is required.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        paper_id: { type: "string", description: "Versioned arXiv paper ID such as 1706.03762v7" },
+        content: { type: "string", description: "Complete Markdown guide to save" }
+      },
+      required: ["paper_id", "content"],
       additionalProperties: false
     }
   },
@@ -169,7 +247,12 @@ export const toolDefinitions = [
 
 // 按本轮运行设置返回允许交给模型的工具定义。
 export function enabledToolDefinitions(webSearchEnabled: boolean): typeof toolDefinitions {
-  const webToolNames = new Set(["web_search", "fetch_web_page"]);
+  const webToolNames = new Set([
+    "web_search",
+    "fetch_web_page",
+    "arxiv_search",
+    "paper_import"
+  ]);
   return webSearchEnabled
     ? toolDefinitions
     : toolDefinitions.filter((tool) => !webToolNames.has(tool.name));
@@ -329,6 +412,41 @@ async function executeToolUnbounded(name: string, rawArguments: string): Promise
     return results.length === 0
       ? `No web results found for: ${query}`
       : JSON.stringify({ query, results }, null, 2);
+  }
+
+  if (name === "arxiv_search") {
+    const { query, max_results: maxResults = 5 } = args as {
+      query: string;
+      max_results?: number;
+    };
+    const results = await searchArxiv(query, maxResults);
+
+    return results.length === 0
+      ? `No arXiv results found for: ${query}`
+      : JSON.stringify({ query, results }, null, 2);
+  }
+
+  if (name === "paper_import") {
+    const { arxiv_id: arxivId } = args as { arxiv_id: string };
+    return JSON.stringify(await importArxivPaper(arxivId), null, 2);
+  }
+
+  if (name === "paper_search") {
+    const {
+      query,
+      arxiv_id: arxivId,
+      top_k: topK = 5
+    } = args as { query: string; arxiv_id?: string; top_k?: number };
+    const results = await searchPapers(query, { arxivId, topK });
+
+    return results.length === 0
+      ? `No imported paper results found for: ${query}`
+      : JSON.stringify({ query, results }, null, 2);
+  }
+
+  if (name === "paper_save_guide") {
+    const { paper_id: paperId, content } = args as { paper_id: string; content: string };
+    return `Saved paper guide: ${await savePaperGuide(paperId, content)}`;
   }
 
   if (name === "fetch_web_page") {

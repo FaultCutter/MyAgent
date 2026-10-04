@@ -33,12 +33,12 @@
       }
 
       main {
-        width: min(920px, 100%);
+        width: min(1440px, 100%);
         height: 100dvh;
         margin: 0 auto;
         padding: 0 20px;
         display: grid;
-        grid-template-rows: auto minmax(0, 1fr) auto;
+        grid-template-rows: auto minmax(0, 1fr);
       }
 
       header {
@@ -53,7 +53,7 @@
       }
 
       .brand {
-        min-width: 140px;
+        min-width: 320px;
       }
 
       h1 {
@@ -62,15 +62,23 @@
       }
 
       #context-stats,
-      #token-stats {
+      #token-stats,
+      #session-id {
         margin-top: 4px;
         color: var(--muted);
         font-size: 12px;
         white-space: nowrap;
       }
 
-      #token-stats {
+      #token-stats,
+      #session-id {
         white-space: normal;
+      }
+
+      #session-id {
+        overflow-wrap: anywhere;
+        font-family: "Cascadia Code", Consolas, monospace;
+        font-size: 11px;
       }
 
       #session-controls,
@@ -117,6 +125,20 @@
 
       #delete-session {
         color: var(--danger);
+      }
+
+      #workspace {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+      }
+
+      #chat-column {
+        min-width: 0;
+        min-height: 0;
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) auto;
+        padding-right: 18px;
       }
 
       #messages {
@@ -217,14 +239,6 @@
         background: transparent;
       }
 
-      details.tool-details {
-        margin-top: 12px;
-        padding-top: 9px;
-        border-top: 1px solid var(--line);
-        color: var(--muted);
-        font-size: 13px;
-      }
-
       details summary {
         cursor: pointer;
       }
@@ -272,12 +286,42 @@
         z-index: 2;
       }
 
+      #inspector {
+        min-width: 0;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 16px 2px 16px 18px;
+        border-left: 1px solid var(--line);
+        scrollbar-gutter: stable;
+      }
+
+      .inspector-heading {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .inspector-heading h2 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .inspector-heading span {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
       #approval,
       #run-panel {
-        display: none;
         margin-bottom: 9px;
         padding: 11px 13px;
         border-radius: 10px;
+      }
+
+      #approval {
+        display: none;
       }
 
       #approval {
@@ -297,17 +341,99 @@
         font-size: 13px;
       }
 
+      #approval-jev {
+        margin: 7px 0;
+        white-space: pre-line;
+        font-size: 13px;
+      }
+
       #run-panel {
-        max-height: 145px;
+        display: block;
+        max-height: 260px;
         overflow-y: auto;
         border: 1px solid var(--line);
         background: var(--panel);
         font-size: 13px;
       }
 
-      #run-panel.visible,
       #approval.visible {
         display: block;
+      }
+
+      .panel-title {
+        margin-bottom: 5px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      #trace-review {
+        margin: 0;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--panel);
+      }
+
+      #trace-review > summary {
+        padding: 9px 12px;
+        font-weight: 650;
+      }
+
+      .review-content {
+        padding: 0 12px 12px;
+      }
+
+      .review-controls {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+        gap: 7px;
+        margin-bottom: 10px;
+      }
+
+      .review-controls select {
+        max-width: none;
+        min-width: 0;
+      }
+
+      #trace-summary,
+      #eval-result {
+        margin: 8px 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .trace-events,
+      .eval-checks {
+        display: grid;
+        gap: 6px;
+        margin: 8px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .trace-event,
+      .eval-check {
+        padding: 7px 9px;
+        border-left: 3px solid var(--line);
+        border-radius: 5px;
+        background: Canvas;
+        font-size: 12px;
+      }
+
+      .trace-event pre {
+        margin: 5px 0 0;
+        padding: 6px;
+        white-space: pre-wrap;
+      }
+
+      .eval-check.pass {
+        border-left-color: #2e7d32;
+      }
+
+      .eval-check.fail {
+        border-left-color: var(--danger);
       }
 
       #run-message {
@@ -316,6 +442,13 @@
 
       #live-events {
         margin-top: 7px;
+      }
+
+      #live-events:empty::before {
+        display: block;
+        padding: 7px 0;
+        color: var(--muted);
+        content: "当前还没有工具调用。";
       }
 
       form {
@@ -383,9 +516,46 @@
         color: var(--danger);
       }
 
-      @media (max-width: 700px) {
+      @media (max-width: 900px) {
+        html,
+        body {
+          height: auto;
+          overflow: auto;
+        }
+
         main {
+          height: auto;
+          min-height: 100dvh;
+          display: block;
           padding: 0 12px;
+        }
+
+        header {
+          position: sticky;
+          top: 0;
+        }
+
+        #workspace {
+          display: block;
+        }
+
+        #chat-column {
+          height: calc(100dvh - 86px);
+          min-height: 520px;
+          padding-right: 0;
+        }
+
+        #inspector {
+          overflow: visible;
+          padding: 16px 0 24px;
+          border-top: 1px solid var(--line);
+          border-left: 0;
+        }
+      }
+
+      @media (max-width: 700px) {
+        .brand {
+          min-width: 0;
         }
 
         header {
@@ -406,6 +576,15 @@
 
         .message {
           max-width: 94%;
+        }
+
+        .review-controls {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        #chat-column {
+          height: calc(100dvh - 172px);
+          min-height: 480px;
         }
       }
 
@@ -445,6 +624,7 @@
       <header>
         <div class="brand">
           <h1>myAgent</h1>
+          <div id="session-id">会话 ID：加载中…</div>
           <div id="context-stats">会话：0 条消息 · 上下文：0 项 · 0 B</div>
           <div id="token-stats">本轮 Token：尚无数据</div>
         </div>
@@ -455,48 +635,77 @@
         </div>
       </header>
 
-      <section id="messages" aria-live="polite"></section>
+      <div id="workspace">
+        <section id="chat-column">
+          <section id="messages" aria-live="polite"></section>
 
-      <section id="composer">
-        <div id="approval" role="alert">
-          <strong>Agent 请求执行命令</strong>
-          <pre id="approval-command"></pre>
-          <p id="approval-reason"></p>
-          <div class="actions">
-            <button id="approve" type="button">允许</button>
-            <button id="deny" type="button">拒绝</button>
+          <section id="composer">
+            <div id="approval" role="alert">
+              <strong>Agent 请求执行命令</strong>
+              <pre id="approval-command"></pre>
+              <p id="approval-reason"></p>
+              <p id="approval-jev" hidden></p>
+              <div class="actions">
+                <button id="approve" type="button">允许</button>
+                <button id="deny" type="button">拒绝</button>
+              </div>
+            </div>
+
+            <form id="chat-form">
+              <textarea
+                id="message"
+                rows="1"
+                aria-label="消息"
+                placeholder="输入任务或问题……"
+                required
+              ></textarea>
+              <button id="send" type="submit">发送</button>
+            </form>
+            <div id="composer-meta">
+              <div class="composer-options">
+                <label
+                  class="network-option"
+                  title="开启后，本轮 Agent 才能调用免费的 Bing RSS 联网搜索"
+                >
+                  <input id="web-search-enabled" type="checkbox" />
+                  允许联网搜索
+                </label>
+                <span>Enter 发送 · Shift + Enter 换行</span>
+              </div>
+              <span id="status" aria-live="polite">就绪</span>
+            </div>
+          </section>
+        </section>
+
+        <aside id="inspector" aria-label="运行观察面板">
+          <div class="inspector-heading">
+            <h2>运行观察</h2>
+            <span>Tools · Trace · Eval</span>
           </div>
-        </div>
 
-        <div id="run-panel" aria-live="polite">
-          <div id="run-message">就绪</div>
-          <ol id="live-events" class="tool-list"></ol>
-        </div>
+          <section id="run-panel" aria-live="polite">
+            <div class="panel-title">工具链调用</div>
+            <div id="run-message">就绪</div>
+            <ol id="live-events" class="tool-list"></ol>
+          </section>
 
-        <form id="chat-form">
-          <textarea
-            id="message"
-            rows="1"
-            aria-label="消息"
-            placeholder="输入任务或问题……"
-            required
-          ></textarea>
-          <button id="send" type="submit">发送</button>
-        </form>
-        <div id="composer-meta">
-          <div class="composer-options">
-            <label
-              class="network-option"
-              title="开启后，本轮 Agent 才能调用免费的 Bing RSS 联网搜索"
-            >
-              <input id="web-search-enabled" type="checkbox" />
-              允许联网搜索
-            </label>
-            <span>Enter 发送 · Shift + Enter 换行</span>
-          </div>
-          <span id="status" aria-live="polite">就绪</span>
-        </div>
-      </section>
+          <details id="trace-review" open>
+            <summary>Trace + Eval</summary>
+            <div class="review-content">
+              <div class="review-controls">
+                <select id="trace-select" aria-label="选择运行记录"></select>
+                <select id="eval-case-select" aria-label="选择评估规则"></select>
+                <button id="refresh-traces" type="button">刷新</button>
+                <button id="evaluate-trace" type="button" disabled>评估</button>
+              </div>
+              <div id="trace-summary">当前会话还没有运行记录。</div>
+              <ol id="trace-events" class="trace-events"></ol>
+              <div id="eval-result"></div>
+              <ol id="eval-checks" class="eval-checks"></ol>
+            </div>
+          </details>
+        </aside>
+      </div>
     </main>
 
     <script>
@@ -509,14 +718,24 @@
       const sessionSelect = document.getElementById("session-select");
       const status = document.getElementById("status");
       const webSearchEnabled = document.getElementById("web-search-enabled");
+      const sessionIdLabel = document.getElementById("session-id");
       const contextStats = document.getElementById("context-stats");
       const tokenStats = document.getElementById("token-stats");
       const approval = document.getElementById("approval");
       const approvalCommand = document.getElementById("approval-command");
       const approvalReason = document.getElementById("approval-reason");
+      const approvalJev = document.getElementById("approval-jev");
       const runPanel = document.getElementById("run-panel");
       const runMessage = document.getElementById("run-message");
       const liveEvents = document.getElementById("live-events");
+      const traceSelect = document.getElementById("trace-select");
+      const evalCaseSelect = document.getElementById("eval-case-select");
+      const refreshTracesButton = document.getElementById("refresh-traces");
+      const evaluateTraceButton = document.getElementById("evaluate-trace");
+      const traceSummary = document.getElementById("trace-summary");
+      const traceEvents = document.getElementById("trace-events");
+      const evalResult = document.getElementById("eval-result");
+      const evalChecks = document.getElementById("eval-checks");
       let currentApprovalId = null;
       let busy = false;
       let statusFailures = 0;
@@ -644,16 +863,6 @@
         return list;
       }
 
-      // 创建一块可展开的最终工具调用记录。
-      function createToolDetails(events) {
-        const details = document.createElement("details");
-        details.className = "tool-details";
-        const summary = document.createElement("summary");
-        summary.textContent = `工具调用 ${events.length} 次`;
-        details.append(summary, createToolList(events));
-        return details;
-      }
-
       // 将消息区滚动到最新内容。
       function scrollMessagesToBottom(smooth = true) {
         messages.scrollTo({ top: messages.scrollHeight, behavior: smooth ? "smooth" : "auto" });
@@ -683,7 +892,7 @@
           article.textContent = text;
         }
 
-        if (events.length > 0) article.append(createToolDetails(events));
+        if (events.length > 0) renderLiveEvents(events);
         messages.append(article);
         scrollMessagesToBottom();
       }
@@ -756,6 +965,8 @@
       async function loadSessions() {
         const response = await fetch("/api/sessions");
         const data = await readResponse(response, "无法加载会话列表");
+        sessionIdLabel.textContent = `会话 ID：${data.currentSessionId}`;
+        sessionIdLabel.title = data.currentSessionId;
         sessionSelect.replaceChildren();
 
         data.sessions.forEach((item) => {
@@ -771,10 +982,142 @@
       async function loadMessages() {
         const response = await fetch("/api/messages");
         const data = await readResponse(response, "无法加载会话内容");
+        sessionIdLabel.textContent = `会话 ID：${data.sessionId}`;
+        sessionIdLabel.title = data.sessionId;
         messages.replaceChildren();
         data.messages.forEach((item) => addMessage(item.role, item.text));
         if (data.messages.length === 0) showEmptyState();
         scrollMessagesToBottom(false);
+      }
+
+      // 把 Trace 事件转换成适合人工审查的标题和细节。
+      function describeTraceEvent(event) {
+        if (event.type === "run_started") {
+          return { title: "开始运行", detail: `模型：${event.model}\n联网：${event.webSearchEnabled ? "开启" : "关闭"}\n任务：${event.task}` };
+        }
+        if (event.type === "model_call_completed") {
+          return { title: `模型调用 ${event.step} 完成 · ${event.durationMs} ms`, detail: `累计 Token：${event.usage.totalTokens}\n模型上下文：${event.context.modelItems} 项 / ${event.context.modelCharacters} 字符` };
+        }
+        if (event.type === "tool_call_started") {
+          return { title: `调用工具 · ${event.tool}`, detail: JSON.stringify(event.arguments, null, 2) };
+        }
+        if (event.type === "tool_call_completed") {
+          return { title: `工具结束 · ${event.tool} · ${event.status}`, detail: `${event.durationMs} ms · 输出 ${event.outputCharacters} 字符${event.truncated ? " · 已裁剪" : ""}${event.error ? `\n错误：${event.error}` : ""}` };
+        }
+        if (event.type === "approval_requested") {
+          return { title: "请求命令审批", detail: `${event.command}\n原因：${event.reason}` };
+        }
+        if (event.type === "jev_review_completed") {
+          return { title: `Jev 命令辅助判断 · ${event.status}`, detail: event.status === "ok"
+            ? `建议：${event.recommendation}\n置信度：${event.confidence ?? "未提供"}\n耗时：${event.durationMs} ms`
+            : `辅助判断不可用：${event.error}\n耗时：${event.durationMs} ms` };
+        }
+        if (event.type === "approval_resolved") {
+          return { title: `命令审批 · ${event.approved ? "允许" : "拒绝"}`, detail: `等待 ${event.waitingDurationMs} ms` };
+        }
+        if (event.type === "run_completed") {
+          return { title: `运行完成 · ${event.durationMs} ms`, detail: `停止原因：${event.stopReason}\n累计 Token：${event.usage.totalTokens}` };
+        }
+        return { title: `运行失败 · ${event.durationMs} ms`, detail: `停止原因：${event.stopReason}\n错误：${event.error}` };
+      }
+
+      // 显示选中 Run 的完整结构化事件轨迹。
+      async function loadSelectedTrace() {
+        const runId = traceSelect.value;
+        traceEvents.replaceChildren();
+        evalResult.textContent = "";
+        evalChecks.replaceChildren();
+        evaluateTraceButton.disabled = !runId || !evalCaseSelect.value;
+
+        if (!runId) {
+          traceSummary.textContent = "当前会话还没有运行记录。";
+          return;
+        }
+
+        const response = await fetch(`/api/trace?runId=${encodeURIComponent(runId)}`);
+        const data = await readResponse(response, "无法读取 Trace");
+        const first = data.events[0];
+        const last = data.events.at(-1);
+        traceSummary.textContent = `${first?.task ?? "未知任务"} · ${data.events.length} 个事件 · ${last?.type ?? "未知状态"}`;
+
+        data.events.forEach((event) => {
+          const description = describeTraceEvent(event);
+          const item = document.createElement("li");
+          item.className = "trace-event";
+          const title = document.createElement("strong");
+          title.textContent = `#${event.sequence} ${description.title}`;
+          item.append(title);
+          if (description.detail) {
+            const detail = document.createElement("pre");
+            detail.textContent = description.detail;
+            item.append(detail);
+          }
+          traceEvents.append(item);
+        });
+      }
+
+      // 加载当前会话的 Run 摘要和项目内定义的 Eval Case。
+      async function loadTraceReview(preferredRunId) {
+        const [tracesResponse, casesResponse] = await Promise.all([
+          fetch("/api/traces"),
+          fetch("/api/eval-cases")
+        ]);
+        const tracesData = await readResponse(tracesResponse, "无法加载 Trace 列表");
+        const casesData = await readResponse(casesResponse, "无法加载 Eval Case");
+        const previousRunId = preferredRunId || traceSelect.value;
+        const previousCaseId = evalCaseSelect.value;
+
+        traceSelect.replaceChildren();
+        if (tracesData.traces.length === 0) {
+          const option = document.createElement("option");
+          option.value = "";
+          option.textContent = "当前会话暂无 Run";
+          traceSelect.append(option);
+        } else {
+          tracesData.traces.forEach((trace) => {
+            const option = document.createElement("option");
+            option.value = trace.runId;
+            option.textContent = `${trace.status} · ${trace.task.slice(0, 42)} · ${new Date(trace.startedAt).toLocaleTimeString()}`;
+            option.selected = trace.runId === previousRunId;
+            traceSelect.append(option);
+          });
+        }
+
+        evalCaseSelect.replaceChildren();
+        const emptyCase = document.createElement("option");
+        emptyCase.value = "";
+        emptyCase.textContent = "选择 Eval Case";
+        evalCaseSelect.append(emptyCase);
+        casesData.cases.forEach((evalCase) => {
+          const option = document.createElement("option");
+          option.value = evalCase.id;
+          option.textContent = evalCase.name;
+          option.selected = evalCase.id === previousCaseId;
+          evalCaseSelect.append(option);
+        });
+
+        await loadSelectedTrace();
+      }
+
+      // 对当前 Trace 运行选中的确定性规则，并显示每一项结果。
+      async function evaluateSelectedTrace() {
+        if (!traceSelect.value || !evalCaseSelect.value) return;
+        const response = await fetch("/api/eval", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ runId: traceSelect.value, caseId: evalCaseSelect.value })
+        });
+        const data = await readResponse(response, "Trace 评估失败");
+        const result = data.result;
+        evalResult.textContent = `${result.status.toUpperCase()} · ${result.checks.filter((check) => check.passed).length}/${result.checks.length} 项通过`;
+        evalChecks.replaceChildren();
+
+        result.checks.forEach((check) => {
+          const item = document.createElement("li");
+          item.className = `eval-check ${check.passed ? "pass" : "fail"}`;
+          item.textContent = `${check.passed ? "PASS" : "FAIL"} · ${check.name} · expected=${JSON.stringify(check.expected)} · actual=${JSON.stringify(check.actual)}`;
+          evalChecks.append(item);
+        });
       }
 
       // 把本轮实时工具事件更新到运行面板中。
@@ -797,6 +1140,8 @@
         currentApprovalId = nextApproval.id;
         approvalCommand.textContent = nextApproval.command;
         approvalReason.textContent = `原因：${nextApproval.reason}`;
+        approvalJev.textContent = nextApproval.review || "";
+        approvalJev.hidden = !nextApproval.review;
         approval.classList.add("visible");
       }
 
@@ -864,7 +1209,7 @@
           });
           const data = await readResponse(response, "请求失败");
           addMessage("assistant", data.answer, data.events);
-          await Promise.all([loadSessions(), pollStatusOnce()]).catch((error) => {
+          await Promise.all([loadSessions(), pollStatusOnce(), loadTraceReview(data.runId)]).catch((error) => {
             setStatus(`回答已收到，但界面状态刷新失败：${error.message}`, true);
           });
         } catch (error) {
@@ -900,7 +1245,7 @@
         if (busy || !window.confirm("创建新会话吗？当前会话会保留在会话列表中。")) return;
         const response = await fetch("/api/new", { method: "POST" });
         await readResponse(response, "无法创建会话");
-        await Promise.all([loadSessions(), loadMessages(), pollStatusOnce()]);
+        await Promise.all([loadSessions(), loadMessages(), pollStatusOnce(), loadTraceReview()]);
         input.focus();
       }
 
@@ -913,7 +1258,7 @@
           body: JSON.stringify({ sessionId })
         });
         await readResponse(response, "无法切换会话");
-        await Promise.all([loadSessions(), loadMessages(), pollStatusOnce()]);
+        await Promise.all([loadSessions(), loadMessages(), pollStatusOnce(), loadTraceReview()]);
         input.focus();
       }
 
@@ -930,7 +1275,7 @@
           body: JSON.stringify({ sessionId })
         });
         await readResponse(response, "无法删除会话");
-        await Promise.all([loadSessions(), loadMessages(), pollStatusOnce()]);
+        await Promise.all([loadSessions(), loadMessages(), pollStatusOnce(), loadTraceReview()]);
         input.focus();
       }
 
@@ -971,8 +1316,20 @@
       sessionSelect.addEventListener("change", () => {
         switchSession(sessionSelect.value).catch(reportUiError);
       });
+      traceSelect.addEventListener("change", () => {
+        loadSelectedTrace().catch(reportUiError);
+      });
+      evalCaseSelect.addEventListener("change", () => {
+        evaluateTraceButton.disabled = !traceSelect.value || !evalCaseSelect.value;
+      });
+      refreshTracesButton.addEventListener("click", () => {
+        loadTraceReview().catch(reportUiError);
+      });
+      evaluateTraceButton.addEventListener("click", () => {
+        evaluateSelectedTrace().catch(reportUiError);
+      });
 
-      Promise.all([loadSessions(), loadMessages(), pollStatusOnce()])
+      Promise.all([loadSessions(), loadMessages(), pollStatusOnce(), loadTraceReview()])
         .catch(reportUiError)
         .finally(() => input.focus());
       resizeInput();
